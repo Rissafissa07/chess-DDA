@@ -1,3 +1,14 @@
 __pycache__/
 *.pyc
 .DS_Store
+
+# virtual environments
+venv/
+.env/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# model outputs / experiments
+results/
+models/
