@@ -38,6 +38,7 @@ def play_game(player_white, player_black, verbose=False, delay=0.5):
         else:
             phase = "endgame"
 
+        player_to_move = board.turn
         board.push(move)
 
 
@@ -49,7 +50,7 @@ def play_game(player_white, player_black, verbose=False, delay=0.5):
             move_number += 1
         
         move_info = {
-            "player": board.turn,
+            "player": player_to_move,
             "move": move,
             "phase": phase,
             "move_values": move_values
