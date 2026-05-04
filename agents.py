@@ -42,7 +42,7 @@ class MCTSPlayer:
 
         best_child = max(
             root.children,
-            key=lambda c: c.wins / c.visits if c.visits > 0 else -1
+            key=lambda c: (c.wins / c.visits) if c.visits > 0 else float("-inf")
         )
         
         move_values = []
@@ -51,7 +51,7 @@ class MCTSPlayer:
             if child.visits > 0:
                 value = child.wins / child.visits
             else:
-                value = 0
+                continue  # Skip unvisited nodes
 
             move_values.append((child.move, value, child.visits))
 
