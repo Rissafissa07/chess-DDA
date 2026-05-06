@@ -7,6 +7,53 @@ class RandomPlayer:
     def choose_move(self, board):
         return random.choice(list(board.legal_moves))
 
+class PlayerModel:
+    def __init__(self):
+        self.errors = []
+
+    def update(self, error):
+        if error is not None:
+            self.errors.append(error)
+
+    def average_error(self):
+        if len(self.errors) == 0:
+            return 0
+
+        return sum(self.errors) / len(self.errors)
+
+    def consistency(self):
+        if len(self.errors) < 2:
+            return 0
+
+        avg = self.average_error()
+        squared_differences = [(error - avg) ** 2 for error in self.errors]
+        variance = sum(squared_differences) / len(squared_differences)
+
+        return math.sqrt(variance)
+
+    def blunder_rate(self, threshold=0.5):
+        if len(self.errors) == 0:
+            return 0
+
+        blunders = [error for error in self.errors if error >= threshold]
+        return len(blunders) / len(self.errors)
+
+def find_move_error(chosen_move, move_values):
+    if move_values is None or len(move_values) == 0:
+        return None
+
+    best_value = move_values[0][1]
+    chosen_value = None
+
+    for move, value, visits in move_values:
+        if move == chosen_move:
+            chosen_value = value
+            break
+
+    if chosen_value is None:
+        return None
+
+    return best_value - chosen_value
 
 class MCTSNode:
     # Represents a node in the Monte Carlo Tree Search
@@ -114,3 +161,51 @@ class MCTSPlayer:
             return -1
         else:
             return 0
+        
+class AdaptiveMCTSPlayer:
+    def __init__(self, simulations=200, top_k=10):
+        self.simulations = simulations
+        self.top_k = top_k
+        self.base_mcts = MCTSPlayer(simulations=simulations)
+        self.player_model = PlayerModel() 
+
+    def choose_move(self, board):
+        best_move, move_values = self.base_mcts.choose_move(board)
+
+        if move_values is None or len(move_values) == 0:
+            return random.choice(list(board.legal_moves))  # No move values available, return a random move
+        
+        best_value = move_values[0][1]
+        target_error = self.player_model.average_error() # Could be a fixed threshold or based on the player's historical performance
+        consistency_threshold = self.player_model.consistency()  # Could be a fixed threshold or based on the player's historical performance
+
+        temperature = max(0.05, consistency_threshold)  # Ensure temperature is not too low, will be adjusted if necessary
+
+        candidates = move_values[:self.top_k]
+        scored_moves = []
+        for move, value, visits in candidates:
+            move_error = best_value - value
+            score = math.exp(-abs(move_error - target_error) / temperature)
+            scored_moves.append((move, score, move_error, value, visits))
+
+        total_score = sum(score for _, score, _, _, _ in scored_moves)
+
+        if total_score == 0:
+            selected_move = best_move
+        else:
+            r = random.random() * total_score
+            cumulative = 0
+
+            selected_move = best_move
+            for move, score, move_error, value, visits in scored_moves:
+                cumulative += score
+                if r <= cumulative:
+                    selected_move = move
+                    break
+
+        print("\nAdaptive MCTS:")
+        print(f"target_error={target_error:.3f}, consistency={consistency_threshold:.3f}, temperature={temperature:.3f}")
+        print(f"selected_move={selected_move}")
+
+        return selected_move, move_values
+

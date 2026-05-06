@@ -1,4 +1,4 @@
-from agents import RandomPlayer, MCTSPlayer
+from agents import RandomPlayer, MCTSPlayer, AdaptiveMCTSPlayer
 from game import simulate_games
 from analysis import analyze_phases
 from visuals import play_visual_game
@@ -6,7 +6,7 @@ from visuals import play_visual_game
 
 if __name__ == "__main__":
     VISUAL = True  # Set to True to see the board after each move
-    p1 = MCTSPlayer(simulations=200)
+    p1 = AdaptiveMCTSPlayer(simulations=200)
     p2 = RandomPlayer()
 
     results = simulate_games(p1, p2, n_games=1, verbose=VISUAL)
@@ -26,7 +26,6 @@ if __name__ == "__main__":
     print("\nPHASE ANALYSIS:")
     for phase, stats in analysis.items():
         print(f"\n{phase.upper()}:")
-        print(f"  avg_error: {stats['avg_error']:.3f}")
         avg_error = stats['avg_error']
         consistency = stats['consistency']
 
