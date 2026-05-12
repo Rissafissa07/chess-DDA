@@ -19,7 +19,8 @@ if __name__ == "__main__":
     print("\nPhase breakdown:")
     print(results[0]["phases"])
     print("\nFirst move debug:")
-    print(results[0]["moves"][0])
+    first_move = results[0]["moves"][0]
+    print(f"Move: {first_move['move']}, Color: {first_move['color']}, Role: {first_move['role']}, Agent: {first_move['agent_type']}")
 
     analysis = analyze_phases(results[0])
 
