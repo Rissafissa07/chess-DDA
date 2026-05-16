@@ -12,3 +12,6 @@ venv/
 # model outputs / experiments
 results/
 models/
+
+# local web UI logs
+logs/*.json

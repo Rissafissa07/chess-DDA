@@ -1,0 +1,310 @@
+const pieceSymbols = {
+  K: "♔",
+  Q: "♕",
+  R: "♖",
+  B: "♗",
+  N: "♘",
+  P: "♙",
+  k: "♚",
+  q: "♛",
+  r: "♜",
+  b: "♝",
+  n: "♞",
+  p: "♟",
+};
+
+let gameState = null;
+let selectedSquare = null;
+let isBusy = false;
+
+const boardElement = document.querySelector("#board");
+const boardShellElement = document.querySelector("#board-shell");
+const boardAlertElement = document.querySelector("#board-alert");
+const messageElement = document.querySelector("#message");
+const humanColorInput = document.querySelector("#human-color");
+const newGameButton = document.querySelector("#new-game");
+const saveLogButton = document.querySelector("#save-log");
+
+newGameButton.addEventListener("click", startNewGame);
+saveLogButton.addEventListener("click", saveLog);
+
+async function startNewGame() {
+  const response = await fetch("/api/new-game", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      human_color: humanColorInput.value,
+    }),
+  });
+  await applyResponse(response, "New game started.");
+}
+
+async function saveLog() {
+  const response = await fetch("/api/save-log", { method: "POST" });
+  const data = await response.json();
+  if (!response.ok) {
+    showMessage(data.error || "Could not save log.");
+    return;
+  }
+  showMessage(`Saved log to ${data.path}`);
+}
+
+async function makeMove(move) {
+  setBusy(true);
+  showMessage("Adaptive MCTS thinking...");
+
+  try {
+    const response = await fetch("/api/move", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ move }),
+    });
+    await applyResponse(response, "Move played.");
+  } catch (error) {
+    showMessage("Move request failed.");
+  } finally {
+    setBusy(false);
+  }
+}
+
+async function applyResponse(response, successMessage) {
+  const data = await response.json();
+  if (!response.ok) {
+    if (data.state) {
+      gameState = data.state;
+      render();
+    }
+    showMessage(data.error || "Request failed.");
+    return;
+  }
+
+  gameState = data;
+  selectedSquare = null;
+  render();
+  showMessage(successMessage);
+}
+
+function render() {
+  renderBoard();
+  renderBoardAlert();
+  renderStatus();
+  renderMoveLog();
+  updateControls();
+}
+
+function renderBoard() {
+  boardElement.innerHTML = "";
+  if (!gameState) {
+    return;
+  }
+
+  const rows = gameState.human_color === "black"
+    ? [...gameState.board].reverse().map((row) => [...row].reverse())
+    : gameState.board;
+
+  for (const row of rows) {
+    for (const square of row) {
+      const button = document.createElement("button");
+      button.className = "square";
+      button.dataset.square = square.square;
+      button.textContent = square.piece ? pieceSymbols[square.piece] : "";
+      button.setAttribute("aria-label", square.square);
+
+      const file = square.square.charCodeAt(0) - "a".charCodeAt(0);
+      const rank = Number(square.square[1]);
+      if ((file + rank) % 2 === 0) {
+        button.classList.add("dark");
+      } else {
+        button.classList.add("light");
+      }
+
+      if (square.square === selectedSquare) {
+        button.classList.add("selected");
+      }
+      if (isLegalDestination(square.square)) {
+        button.classList.add("legal-target");
+      }
+
+      button.addEventListener("click", () => handleSquareClick(square.square));
+      button.addEventListener("dragstart", (event) => handleDragStart(event, square.square, square.piece));
+      button.addEventListener("dragover", handleDragOver);
+      button.addEventListener("drop", (event) => handleDrop(event, square.square));
+      button.draggable = canStartMoveFrom(square.square, square.piece);
+      boardElement.appendChild(button);
+    }
+  }
+}
+
+function handleSquareClick(square) {
+  if (isBusy || !gameState || gameState.current_role !== "human" || gameState.status !== "ongoing" && gameState.status !== "ongoing: check") {
+    return;
+  }
+
+  if (!selectedSquare) {
+    selectedSquare = square;
+    renderBoard();
+    return;
+  }
+
+  const move = selectedSquare + square;
+  if (isLegalMove(move)) {
+    makeMove(move);
+    return;
+  }
+
+  showMessage("Illegal move");
+  selectedSquare = square;
+  renderBoard();
+}
+
+function handleDragStart(event, square, piece) {
+  if (!canStartMoveFrom(square, piece)) {
+    event.preventDefault();
+    return;
+  }
+
+  selectedSquare = square;
+  event.dataTransfer.setData("text/plain", square);
+  event.dataTransfer.effectAllowed = "move";
+  event.currentTarget.classList.add("selected");
+}
+
+function handleDragOver(event) {
+  if (!isBusy && gameState && gameState.current_role === "human" && !isGameOver()) {
+    event.preventDefault();
+  }
+}
+
+function handleDrop(event, targetSquare) {
+  event.preventDefault();
+  if (isBusy || !gameState || gameState.current_role !== "human" || isGameOver()) {
+    return;
+  }
+
+  const sourceSquare = event.dataTransfer.getData("text/plain") || selectedSquare;
+  if (!sourceSquare) {
+    return;
+  }
+
+  const move = sourceSquare + targetSquare;
+  if (isLegalMove(move)) {
+    makeMove(move);
+    return;
+  }
+
+  showMessage("Illegal move");
+  selectedSquare = null;
+  renderBoard();
+}
+
+function canStartMoveFrom(square, piece) {
+  if (!piece || isBusy || !gameState || gameState.current_role !== "human" || isGameOver()) {
+    return false;
+  }
+  return gameState.legal_moves.some((move) => move.startsWith(square));
+}
+
+function isGameOver() {
+  return Boolean(gameState?.result) || ["checkmate", "stalemate", "draw"].includes(gameState?.status);
+}
+
+function isLegalMove(move) {
+  return gameState.legal_moves.includes(move) || gameState.legal_moves.includes(move + "q");
+}
+
+function isLegalDestination(square) {
+  if (!selectedSquare || !gameState) {
+    return false;
+  }
+  return gameState.legal_moves.some((move) => move.startsWith(selectedSquare + square));
+}
+
+function renderStatus() {
+  document.querySelector("#status").textContent = gameState?.status || "No game";
+  document.querySelector("#turn").textContent = gameState ? `${gameState.turn} (${gameState.current_role})` : "-";
+  document.querySelector("#white-role").textContent = gameState?.white_role || "-";
+  document.querySelector("#black-role").textContent = gameState?.black_role || "-";
+  document.querySelector("#num-moves").textContent = gameState?.num_moves ?? 0;
+  document.querySelector("#result").textContent = gameState?.result || "-";
+}
+
+function renderBoardAlert() {
+  boardAlertElement.textContent = "";
+  boardAlertElement.className = "board-alert";
+  boardShellElement.classList.toggle("game-over", false);
+
+  if (!gameState) {
+    return;
+  }
+
+  if (gameState.status === "ongoing: check") {
+    boardAlertElement.textContent = "CHECK";
+    boardAlertElement.classList.add("visible", "check-alert");
+    return;
+  }
+
+  if (gameState.status === "checkmate") {
+    boardAlertElement.textContent = "CHECKMATE";
+    boardAlertElement.classList.add("visible", "game-over-alert");
+    boardShellElement.classList.add("game-over");
+    return;
+  }
+
+  if (gameState.status === "stalemate") {
+    boardAlertElement.textContent = "STALEMATE";
+    boardAlertElement.classList.add("visible", "game-over-alert");
+    boardShellElement.classList.add("game-over");
+    return;
+  }
+
+  if (gameState.status === "draw") {
+    boardAlertElement.textContent = "DRAW";
+    boardAlertElement.classList.add("visible", "game-over-alert");
+    boardShellElement.classList.add("game-over");
+  }
+}
+
+function renderMoveLog() {
+  const moveLog = document.querySelector("#move-log");
+  moveLog.innerHTML = "";
+  if (!gameState) {
+    return;
+  }
+
+  gameState.moves.forEach((moveInfo, index) => {
+    const item = document.createElement("li");
+    item.className = "move-log-entry";
+    if (index === gameState.moves.length - 1) {
+      item.classList.add("latest");
+    }
+
+    const error = moveInfo.move_error === null || moveInfo.move_error === undefined
+      ? "-"
+      : moveInfo.move_error.toFixed(3);
+
+    item.innerHTML = `
+      <span class="move-main">${moveInfo.move}</span>
+      <span class="move-meta">${moveInfo.color} | ${moveInfo.role}</span>
+      <span class="move-phase">${moveInfo.phase}</span>
+      <span class="move-error">error ${error}</span>
+    `;
+    moveLog.appendChild(item);
+  });
+
+  moveLog.scrollTop = moveLog.scrollHeight;
+}
+
+function showMessage(message) {
+  messageElement.textContent = message;
+}
+
+function setBusy(busy) {
+  isBusy = busy;
+  updateControls();
+}
+
+function updateControls() {
+  newGameButton.disabled = isBusy;
+  saveLogButton.disabled = isBusy;
+  boardElement.classList.toggle("busy", isBusy);
+}
