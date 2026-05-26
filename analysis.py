@@ -46,7 +46,7 @@ def analyze_phases(game_data):
             continue
 
         avg_error = np.mean(errors)
-        consistency = np.std(errors)  # 🔥 key metric
+        consistency = np.std(errors)  
 
         summary[phase] = {
             "avg_error": avg_error,
