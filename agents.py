@@ -102,13 +102,13 @@ class MCTSPlayer:
 
             move_values.append((child.move, value, child.visits))
 
-        # sort best → worst
+        # sort best -> worst
         move_values.sort(key=lambda x: x[1], reverse=True)
 
         # DEBUG PRINT (important for now)
         print("\nMove evaluations:")
         for move, value, visits in move_values[:5]:
-            print(f"{move} → value={value:.3f}, visits={visits}")
+            print(f"{move} -> value={value:.3f}, visits={visits}")
 
         # return best move (for now)
         best_move = move_values[0][0]  # Return the move with the highest value
@@ -208,4 +208,3 @@ class AdaptiveMCTSPlayer:
         print(f"selected_move={selected_move}")
 
         return selected_move, move_values
-
