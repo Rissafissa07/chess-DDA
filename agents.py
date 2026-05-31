@@ -135,15 +135,12 @@ class MCTSPlayer:
 
         # BACKPROP - update the node statistics up the tree
         root_player = node.board.turn
+        root_value = result if root_player == chess.WHITE else -result
 
         while current is not None:
             # Update visits and wins
             current.visits += 1
-
-            if current.board.turn == root_player:
-                current.wins += result
-            else:
-                current.wins -= result
+            current.wins += root_value
 
             current = current.parent
 
