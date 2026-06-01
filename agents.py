@@ -241,6 +241,8 @@ class BestMCTSPlayer(MCTSPlayer):
         return move_values[0][0], move_values
 
 class AdaptiveMCTSPlayer:
+    SEVERE_MATERIAL_RISK_THRESHOLD = 0.5
+
     def __init__(self, simulations=200, top_k=5):
         self.simulations = simulations
         self.top_k = top_k
@@ -260,6 +262,15 @@ class AdaptiveMCTSPlayer:
         temperature = max(0.05, consistency_threshold)  # Ensure temperature is not too low, will be adjusted if necessary
 
         candidates = move_values[:self.top_k]
+        safe_candidates = [
+            candidate
+            for candidate in candidates
+            if self.base_mcts._bad_loss_penalty(board, candidate[0])
+            < self.SEVERE_MATERIAL_RISK_THRESHOLD
+        ]
+        if safe_candidates:
+            candidates = safe_candidates
+
         scored_moves = []
         for move, value, visits in candidates:
             move_error = best_value - value

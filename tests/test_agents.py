@@ -77,6 +77,64 @@ class AdaptiveMCTSPlayerTests(unittest.TestCase):
         self.assertIn(selected_move, scored_candidates)
         self.assertIs(returned_move_values, self.move_values)
 
+    def test_h4_queen_hanging_move_is_severe_and_queen_retreats_are_safe(self):
+        board = chess.Board("rnb1k1nr/1ppp1ppp/8/p1b1P3/P6q/2N1P1P1/1PPBQP1P/R3KBNR b KQkq - 0 8")
+        player = AdaptiveMCTSPlayer()
+        threshold = player.SEVERE_MATERIAL_RISK_THRESHOLD
+
+        self.assertGreaterEqual(
+            player.base_mcts._bad_loss_penalty(board, chess.Move.from_uci("g8e7")),
+            threshold,
+        )
+        for move_uci in ("h4d8", "h4e7", "h4g5", "h4b4"):
+            with self.subTest(move=move_uci):
+                self.assertLess(
+                    player.base_mcts._bad_loss_penalty(board, chess.Move.from_uci(move_uci)),
+                    threshold,
+                )
+
+    def test_severe_candidate_is_not_sampled_when_safe_candidates_exist(self):
+        board = chess.Board("rnb1k1nr/1ppp1ppp/8/p1b1P3/P6q/2N1P1P1/1PPBQP1P/R3KBNR b KQkq - 0 8")
+        player = AdaptiveMCTSPlayer(top_k=5)
+        move_values = [
+            (chess.Move.from_uci("h4d8"), 0.0, 2),
+            (chess.Move.from_uci("h4e7"), 0.0, 2),
+            (chess.Move.from_uci("h4g5"), 0.0, 2),
+            (chess.Move.from_uci("h4b4"), 0.0, 2),
+            (chess.Move.from_uci("g8e7"), -0.466667, 3),
+        ]
+        player.base_mcts.choose_move = lambda current_board: (move_values[0][0], move_values)
+
+        with (
+            patch("agents.random.random", return_value=0.999999),
+            patch.object(player, "_print_adaptive_debug") as print_debug,
+        ):
+            selected_move, _ = player.choose_move(board)
+
+        scored_moves = print_debug.call_args.kwargs["scored_moves"]
+        scored_candidates = [move for move, _, _, _, _ in scored_moves]
+
+        self.assertNotIn(chess.Move.from_uci("g8e7"), scored_candidates)
+        self.assertNotEqual(selected_move, chess.Move.from_uci("g8e7"))
+
+    def test_all_severe_candidates_fall_back_to_original_top_k(self):
+        player = AdaptiveMCTSPlayer(top_k=3)
+        move_values = self.move_values[:3]
+        player.base_mcts.choose_move = lambda board: (move_values[0][0], move_values)
+        player.base_mcts._bad_loss_penalty = lambda board, move: 0.9
+
+        with (
+            patch("agents.random.random", return_value=0.999999),
+            patch.object(player, "_print_adaptive_debug") as print_debug,
+        ):
+            selected_move, _ = player.choose_move(chess.Board())
+
+        scored_moves = print_debug.call_args.kwargs["scored_moves"]
+        scored_candidates = [move for move, _, _, _, _ in scored_moves]
+
+        self.assertEqual(scored_candidates, [move for move, _, _ in move_values])
+        self.assertEqual(selected_move, move_values[-1][0])
+
 
 if __name__ == "__main__":
     unittest.main()
