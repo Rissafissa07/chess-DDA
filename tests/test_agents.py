@@ -46,6 +46,61 @@ class MCTSPlayerMaterialRiskTests(unittest.TestCase):
         self.assertLess(self.penalty_for("b8c6"), self.penalty_for("f7f6"))
 
 
+class MCTSPlayerOpeningBonusTests(unittest.TestCase):
+    def setUp(self):
+        self.player = MCTSPlayer()
+
+    def test_opening_bonus_is_zero_after_fullmove_eight(self):
+        board = chess.Board()
+        board.fullmove_number = 9
+
+        self.assertEqual(self.player._opening_bonus(board, chess.Move.from_uci("g1f3")), 0)
+
+    def test_developing_knight_scores_above_edge_pawn_move(self):
+        board = chess.Board()
+
+        self.assertGreater(
+            self.player._opening_bonus(board, chess.Move.from_uci("g1f3")),
+            self.player._opening_bonus(board, chess.Move.from_uci("a2a3")),
+        )
+
+    def test_centre_pawn_move_receives_bonus(self):
+        board = chess.Board()
+
+        self.assertEqual(
+            self.player._opening_bonus(board, chess.Move.from_uci("e2e4")),
+            self.player.centre_pawn_bonus,
+        )
+
+    def test_castling_receives_bonus(self):
+        board = chess.Board("r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1")
+
+        self.assertEqual(
+            self.player._opening_bonus(board, chess.Move.from_uci("e1g1")),
+            self.player.castling_bonus,
+        )
+
+    def test_early_queen_move_receives_penalty(self):
+        board = chess.Board()
+        board.push_uci("e2e4")
+        board.push_uci("e7e5")
+
+        self.assertEqual(
+            self.player._opening_bonus(board, chess.Move.from_uci("d1h5")),
+            -self.player.early_queen_move_penalty,
+        )
+
+    def test_repeating_developed_piece_move_receives_penalty(self):
+        board = chess.Board()
+        board.push_uci("g1f3")
+        board.push_uci("g8f6")
+
+        self.assertEqual(
+            self.player._opening_bonus(board, chess.Move.from_uci("f3g1")),
+            -self.player.repeated_piece_move_penalty,
+        )
+
+
 class AdaptiveMCTSPlayerTests(unittest.TestCase):
     def setUp(self):
         self.move_values = [
@@ -80,7 +135,7 @@ class AdaptiveMCTSPlayerTests(unittest.TestCase):
     def test_h4_queen_hanging_move_is_severe_and_queen_retreats_are_safe(self):
         board = chess.Board("rnb1k1nr/1ppp1ppp/8/p1b1P3/P6q/2N1P1P1/1PPBQP1P/R3KBNR b KQkq - 0 8")
         player = AdaptiveMCTSPlayer()
-        threshold = player.SEVERE_MATERIAL_RISK_THRESHOLD
+        threshold = player.severe_material_risk_threshold
 
         self.assertGreaterEqual(
             player.base_mcts._bad_loss_penalty(board, chess.Move.from_uci("g8e7")),

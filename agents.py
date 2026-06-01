@@ -75,14 +75,21 @@ class MCTSNode:
 
 
 class MCTSPlayer:
-    PIECE_VALUES = {
+    piece_values = {
         chess.PAWN: 1,
         chess.KNIGHT: 3,
         chess.BISHOP: 3,
         chess.ROOK: 5,
         chess.QUEEN: 9,
     }
-    MATERIAL_RISK_WEIGHT = 0.1
+    material_risk_weight = 0.1
+    opening_max_fullmove = 8
+    develop_minor_bonus = 0.08
+    centre_pawn_bonus = 0.06
+    central_minor_bonus = 0.04
+    castling_bonus = 0.12
+    early_queen_move_penalty = 0.10
+    repeated_piece_move_penalty = 0.06
 
     def __init__(self, simulations=200):
         self.simulations = simulations
@@ -107,7 +114,8 @@ class MCTSPlayer:
             if child.visits > 0:
                 mcts_value = child.wins / child.visits
                 bad_loss_penalty = self._bad_loss_penalty(board, child.move)
-                value = mcts_value - bad_loss_penalty
+                opening_bonus = self._opening_bonus(board, child.move)
+                value = mcts_value - bad_loss_penalty + opening_bonus
             else:
                 continue  # Skip unvisited nodes
 
@@ -128,11 +136,11 @@ class MCTSPlayer:
     def _material_balance(self, board, color):
         own_material = sum(
             len(board.pieces(piece_type, color)) * value
-            for piece_type, value in self.PIECE_VALUES.items()
+            for piece_type, value in self.piece_values.items()
         )
         opponent_material = sum(
             len(board.pieces(piece_type, not color)) * value
-            for piece_type, value in self.PIECE_VALUES.items()
+            for piece_type, value in self.piece_values.items()
         )
         return own_material - opponent_material
 
@@ -182,7 +190,46 @@ class MCTSPlayer:
             uncompensated_loss = max(0, immediate_loss - candidate_gain - compensation)
             worst_uncompensated_loss = max(worst_uncompensated_loss, uncompensated_loss)
 
-        return self.MATERIAL_RISK_WEIGHT * worst_uncompensated_loss
+        return self.material_risk_weight * worst_uncompensated_loss
+
+    def _opening_bonus(self, board, candidate_move):
+        if board.fullmove_number > self.opening_max_fullmove:
+            return 0
+
+        piece = board.piece_at(candidate_move.from_square)
+        if piece is None:
+            return 0
+
+        bonus = 0
+        starting_rank = 0 if piece.color == chess.WHITE else 7
+        central_pawn_squares = {chess.D4, chess.E4, chess.D5, chess.E5}
+        central_knight_squares = {chess.C3, chess.F3, chess.C6, chess.F6}
+
+        if (
+            piece.piece_type in (chess.KNIGHT, chess.BISHOP)
+            and chess.square_rank(candidate_move.from_square) == starting_rank
+        ):
+            bonus += self.develop_minor_bonus
+
+        if piece.piece_type == chess.PAWN and candidate_move.to_square in central_pawn_squares:
+            bonus += self.centre_pawn_bonus
+
+        if piece.piece_type == chess.KNIGHT and candidate_move.to_square in central_knight_squares:
+            bonus += self.central_minor_bonus
+
+        if board.is_castling(candidate_move):
+            bonus += self.castling_bonus
+
+        if piece.piece_type == chess.QUEEN:
+            bonus -= self.early_queen_move_penalty
+
+        if (
+            len(board.move_stack) >= 2
+            and candidate_move.from_square == board.move_stack[-2].to_square
+        ):
+            bonus -= self.repeated_piece_move_penalty
+
+        return bonus
 
     def simulate(self, node):
         current = node
@@ -241,7 +288,7 @@ class BestMCTSPlayer(MCTSPlayer):
         return move_values[0][0], move_values
 
 class AdaptiveMCTSPlayer:
-    SEVERE_MATERIAL_RISK_THRESHOLD = 0.5
+    severe_material_risk_threshold = 0.5
 
     def __init__(self, simulations=200, top_k=5):
         self.simulations = simulations
@@ -266,7 +313,7 @@ class AdaptiveMCTSPlayer:
             candidate
             for candidate in candidates
             if self.base_mcts._bad_loss_penalty(board, candidate[0])
-            < self.SEVERE_MATERIAL_RISK_THRESHOLD
+            < self.severe_material_risk_threshold
         ]
         if safe_candidates:
             candidates = safe_candidates
