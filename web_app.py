@@ -19,10 +19,15 @@ def new_game():
 
     data = request.get_json(silent=True) or {}
     human_color = data.get("human_color", "white")
+    opponent_type = data.get("opponent_type", "adaptive_mcts")
     simulations = DEFAULT_MCTS_SIMULATIONS
 
     try:
-        current_game = WebChessGame(human_color=human_color, simulations=simulations)
+        current_game = WebChessGame(
+            human_color=human_color,
+            opponent_type=opponent_type,
+            simulations=simulations,
+        )
     except ValueError as error:
         return jsonify({"error": str(error)}), 400
 

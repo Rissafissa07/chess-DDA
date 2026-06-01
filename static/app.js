@@ -22,6 +22,7 @@ const boardShellElement = document.querySelector("#board-shell");
 const boardAlertElement = document.querySelector("#board-alert");
 const messageElement = document.querySelector("#message");
 const humanColorInput = document.querySelector("#human-color");
+const opponentTypeInput = document.querySelector("#opponent-type");
 const newGameButton = document.querySelector("#new-game");
 const saveLogButton = document.querySelector("#save-log");
 
@@ -34,6 +35,7 @@ async function startNewGame() {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       human_color: humanColorInput.value,
+      opponent_type: opponentTypeInput.value,
     }),
   });
   await applyResponse(response, "New game started.");
@@ -51,7 +53,7 @@ async function saveLog() {
 
 async function makeMove(move) {
   setBusy(true);
-  showMessage("Adaptive MCTS thinking...");
+  showMessage("Opponent thinking...");
 
   try {
     const response = await fetch("/api/move", {

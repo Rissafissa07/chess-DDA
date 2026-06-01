@@ -158,9 +158,19 @@ class MCTSPlayer:
             return -1
         else:
             return 0
-        
+
+class BestMCTSPlayer(MCTSPlayer):
+    def choose_move(self, board):
+        result = super().choose_move(board)
+
+        if not isinstance(result, tuple):
+            return result
+
+        _, move_values = result
+        return move_values[0][0], move_values
+
 class AdaptiveMCTSPlayer:
-    def __init__(self, simulations=200, top_k=10):
+    def __init__(self, simulations=200, top_k=5):
         self.simulations = simulations
         self.top_k = top_k
         self.base_mcts = MCTSPlayer(simulations=simulations)
@@ -200,8 +210,63 @@ class AdaptiveMCTSPlayer:
                     selected_move = move
                     break
 
-        print("\nAdaptive MCTS:")
-        print(f"target_error={target_error:.3f}, consistency={consistency_threshold:.3f}, temperature={temperature:.3f}")
-        print(f"selected_move={selected_move}")
+        self._print_adaptive_debug(
+            best_move=best_move,
+            target_error=target_error,
+            consistency=consistency_threshold,
+            temperature=temperature,
+            scored_moves=scored_moves,
+            total_score=total_score,
+            selected_move=selected_move,
+        )
 
         return selected_move, move_values
+
+    def _print_adaptive_debug(
+        self,
+        best_move,
+        target_error,
+        consistency,
+        temperature,
+        scored_moves,
+        total_score,
+        selected_move,
+    ):
+        candidate_errors = [move_error for _, _, move_error, _, _ in scored_moves]
+        minimum_candidate_error = min(candidate_errors)
+        maximum_candidate_error = max(candidate_errors)
+        closest_candidate = min(
+            scored_moves,
+            key=lambda item: abs(item[2] - target_error),
+        )
+        target_inside_range = minimum_candidate_error <= target_error <= maximum_candidate_error
+        selected_rank = next(
+            rank
+            for rank, (move, _, _, _, _) in enumerate(scored_moves, start=1)
+            if move == selected_move
+        )
+
+        print("\nAdaptive MCTS decision:")
+        print(f"top_k={self.top_k}")
+        print(f"best_move={best_move}")
+        print(f"target_error={target_error:.3f}")
+        print(f"consistency={consistency:.3f}")
+        print(f"temperature={temperature:.3f}")
+        print(f"minimum_candidate_error={minimum_candidate_error:.3f}")
+        print(f"maximum_candidate_error={maximum_candidate_error:.3f}")
+        print(f"closest_candidate_to_target={closest_candidate[0]}")
+        print(f"target_error_inside_candidate_range={target_inside_range}")
+        if not target_inside_range:
+            print("target_error outside candidate range")
+
+        print("candidates:")
+        for rank, (move, score, move_error, value, visits) in enumerate(scored_moves, start=1):
+            probability = score / total_score if total_score > 0 else 0
+            print(
+                f"rank={rank} move={move} value={value:.3f} visits={visits} "
+                f"error_from_best={move_error:.3f} adaptive_score={score:.3f} "
+                f"probability={probability:.3f}"
+            )
+
+        print(f"selected_move={selected_move}")
+        print(f"selected_move_rank={selected_rank}")

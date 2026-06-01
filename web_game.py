@@ -4,18 +4,29 @@ from datetime import datetime
 
 import chess
 
-from agents import AdaptiveMCTSPlayer, find_move_error
+from agents import AdaptiveMCTSPlayer, BestMCTSPlayer, find_move_error
 
 
 class WebChessGame:
-    def __init__(self, human_color="white", simulations=100):
+    def __init__(self, human_color="white", opponent_type="adaptive_mcts", simulations=100):
         if human_color not in ("white", "black"):
             raise ValueError("human_color must be 'white' or 'black'")
+        if opponent_type not in ("adaptive_mcts", "best_mcts"):
+            raise ValueError("opponent_type must be 'adaptive_mcts' or 'best_mcts'")
 
         self.board = chess.Board()
-        self.adaptive_player = AdaptiveMCTSPlayer(simulations=simulations)
-        self.white_role = "human" if human_color == "white" else "adaptive_mcts"
-        self.black_role = "human" if human_color == "black" else "adaptive_mcts"
+        self.opponent_role = opponent_type
+        if opponent_type == "adaptive_mcts":
+            self.opponent_player = AdaptiveMCTSPlayer(simulations=simulations)
+            self.adaptive_player = self.opponent_player
+            self.evaluation_mcts = self.adaptive_player.base_mcts
+        else:
+            self.opponent_player = BestMCTSPlayer(simulations=simulations)
+            self.adaptive_player = None
+            self.evaluation_mcts = self.opponent_player
+
+        self.white_role = "human" if human_color == "white" else opponent_type
+        self.black_role = "human" if human_color == "black" else opponent_type
         self.move_history = []
         self.phase_data = {
             "opening": [],
@@ -23,8 +34,8 @@ class WebChessGame:
             "endgame": [],
         }
 
-        if self.current_role() == "adaptive_mcts":
-            self.play_adaptive_move()
+        if self.current_role() == self.opponent_role:
+            self.play_opponent_move()
 
     def current_color(self):
         return "white" if self.board.turn == chess.WHITE else "black"
@@ -56,9 +67,10 @@ class WebChessGame:
 
         move = self.parse_legal_move(move_uci)
 
-        _, move_values = self.adaptive_player.base_mcts.choose_move(self.board.copy())
+        _, move_values = self.evaluation_mcts.choose_move(self.board.copy())
         move_error = find_move_error(move, move_values)
-        self.adaptive_player.player_model.update(move_error)
+        if self.adaptive_player is not None:
+            self.adaptive_player.player_model.update(move_error)
 
         self.push_logged_move(
             move=move,
@@ -68,16 +80,16 @@ class WebChessGame:
             move_error=move_error,
         )
 
-        if not self.board.is_game_over(claim_draw=True) and self.current_role() == "adaptive_mcts":
-            self.play_adaptive_move()
+        if not self.board.is_game_over(claim_draw=True) and self.current_role() == self.opponent_role:
+            self.play_opponent_move()
 
-    def play_adaptive_move(self):
+    def play_opponent_move(self):
         if self.board.is_game_over(claim_draw=True):
             return
-        if self.current_role() != "adaptive_mcts":
+        if self.current_role() != self.opponent_role:
             return
 
-        result = self.adaptive_player.choose_move(self.board.copy())
+        result = self.opponent_player.choose_move(self.board.copy())
         if isinstance(result, tuple):
             move, move_values = result
         else:
@@ -86,11 +98,15 @@ class WebChessGame:
 
         self.push_logged_move(
             move=move,
-            role="adaptive_mcts",
-            agent_type="AdaptiveMCTSPlayer",
+            role=self.opponent_role,
+            agent_type=self.opponent_player.__class__.__name__,
             move_values=move_values,
             move_error=None,
         )
+
+    def play_adaptive_move(self):
+        if self.opponent_role == "adaptive_mcts":
+            self.play_opponent_move()
 
     def parse_legal_move(self, move_uci):
         candidate_uci = move_uci.strip().lower()
