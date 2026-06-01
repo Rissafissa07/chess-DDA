@@ -75,6 +75,15 @@ class MCTSNode:
 
 
 class MCTSPlayer:
+    PIECE_VALUES = {
+        chess.PAWN: 1,
+        chess.KNIGHT: 3,
+        chess.BISHOP: 3,
+        chess.ROOK: 5,
+        chess.QUEEN: 9,
+    }
+    MATERIAL_RISK_WEIGHT = 0.1
+
     def __init__(self, simulations=200):
         self.simulations = simulations
 
@@ -96,7 +105,9 @@ class MCTSPlayer:
 
         for child in root.children:
             if child.visits > 0:
-                value = child.wins / child.visits
+                mcts_value = child.wins / child.visits
+                bad_loss_penalty = self._bad_loss_penalty(board, child.move)
+                value = mcts_value - bad_loss_penalty
             else:
                 continue  # Skip unvisited nodes
 
@@ -113,6 +124,66 @@ class MCTSPlayer:
         # return best move (for now)
         best_move = move_values[0][0]  # Return the move with the highest value
         return best_move, move_values
+
+    def _material_balance(self, board, color):
+        own_material = sum(
+            len(board.pieces(piece_type, color)) * value
+            for piece_type, value in self.PIECE_VALUES.items()
+        )
+        opponent_material = sum(
+            len(board.pieces(piece_type, not color)) * value
+            for piece_type, value in self.PIECE_VALUES.items()
+        )
+        return own_material - opponent_material
+
+    def _best_immediate_compensation(self, board, color):
+        best_gain = 0
+        starting_balance = self._material_balance(board, color)
+
+        for move in board.legal_moves:
+            response_board = board.copy()
+            response_board.push(move)
+
+            if response_board.is_checkmate():
+                return float("inf")
+
+            material_gain = self._material_balance(response_board, color) - starting_balance
+            best_gain = max(best_gain, material_gain)
+
+        return best_gain
+
+    def _bad_loss_penalty(self, board, candidate_move):
+        root_player = board.turn
+        starting_balance = self._material_balance(board, root_player)
+        candidate_board = board.copy()
+        candidate_board.push(candidate_move)
+
+        if candidate_board.is_checkmate():
+            return 0
+
+        candidate_gain = max(
+            0,
+            self._material_balance(candidate_board, root_player) - starting_balance,
+        )
+        worst_uncompensated_loss = 0
+
+        for reply in candidate_board.legal_moves:
+            reply_board = candidate_board.copy()
+            reply_board.push(reply)
+
+            immediate_loss = (
+                self._material_balance(candidate_board, root_player)
+                - self._material_balance(reply_board, root_player)
+            )
+            if immediate_loss <= 0:
+                continue
+
+            compensation = self._best_immediate_compensation(reply_board, root_player)
+            uncompensated_loss = max(0, immediate_loss - candidate_gain - compensation)
+            worst_uncompensated_loss = max(worst_uncompensated_loss, uncompensated_loss)
+
+        return self.MATERIAL_RISK_WEIGHT * worst_uncompensated_loss
+
     def simulate(self, node):
         current = node
 

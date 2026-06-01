@@ -20,6 +20,32 @@ class BestMCTSPlayerTests(unittest.TestCase):
         self.assertIs(returned_move_values, move_values)
 
 
+class MCTSPlayerMaterialRiskTests(unittest.TestCase):
+    def setUp(self):
+        self.player = MCTSPlayer()
+        self.board = chess.Board("rnb1kb1r/pp1ppppp/7n/q1p5/2P5/3PP3/PP1B1PPP/RN1QKBNR b KQkq - 2 4")
+
+    def penalty_for(self, move_uci):
+        return self.player._bad_loss_penalty(
+            self.board,
+            chess.Move.from_uci(move_uci),
+        )
+
+    def test_f7f6_receives_queen_scale_penalty_for_bxa5(self):
+        self.assertAlmostEqual(self.penalty_for("f7f6"), 0.9)
+
+    def test_g7g5_receives_queen_scale_penalty_for_bxa5(self):
+        self.assertAlmostEqual(self.penalty_for("g7g5"), 0.9)
+
+    def test_safe_queen_retreats_receive_no_immediate_material_loss_penalty(self):
+        for move_uci in ("a5a6", "a5b6", "a5c7", "a5d8"):
+            with self.subTest(move=move_uci):
+                self.assertEqual(self.penalty_for(move_uci), 0)
+
+    def test_recapturable_sacrifice_is_penalized_less_than_free_queen_loss(self):
+        self.assertLess(self.penalty_for("b8c6"), self.penalty_for("f7f6"))
+
+
 class AdaptiveMCTSPlayerTests(unittest.TestCase):
     def setUp(self):
         self.move_values = [
