@@ -3,7 +3,7 @@ from unittest.mock import patch
 
 import chess
 
-from agents import AdaptiveMCTSPlayer, BestMCTSPlayer, MCTSPlayer
+from agents import AdaptiveMCTSPlayer, BestMCTSPlayer, MCTSNode, MCTSPlayer
 
 
 class BestMCTSPlayerTests(unittest.TestCase):
@@ -98,6 +98,112 @@ class MCTSPlayerOpeningBonusTests(unittest.TestCase):
         self.assertEqual(
             self.player._opening_bonus(board, chess.Move.from_uci("f3g1")),
             -self.player.repeated_piece_move_penalty,
+        )
+
+
+class MCTSPlayerStaticEvalTests(unittest.TestCase):
+    def setUp(self):
+        self.player = MCTSPlayer()
+
+    def test_material_advantage_is_positive_and_disadvantage_is_negative(self):
+        board = chess.Board("7k/8/8/8/8/8/Q7/7K w - - 0 1")
+
+        self.assertGreater(self.player._static_eval(board, chess.WHITE), 0)
+        self.assertLess(self.player._static_eval(board, chess.BLACK), 0)
+
+    def test_static_eval_is_symmetric_between_players(self):
+        board = chess.Board("7k/8/8/8/8/8/Q7/7K w - - 0 1")
+
+        self.assertAlmostEqual(
+            self.player._static_eval(board, chess.WHITE),
+            -self.player._static_eval(board, chess.BLACK),
+        )
+
+    def test_terminal_scores_handle_checkmate_and_draw(self):
+        checkmate = chess.Board("7k/6Q1/6K1/8/8/8/8/8 b - - 0 1")
+        stalemate = chess.Board("7k/5Q2/6K1/8/8/8/8/8 b - - 0 1")
+        draw = chess.Board("7k/8/8/8/8/8/8/7K w - - 0 1")
+
+        self.assertEqual(self.player._static_eval(checkmate, chess.WHITE), 1)
+        self.assertEqual(self.player._static_eval(checkmate, chess.BLACK), -1)
+        self.assertEqual(self.player._static_eval(stalemate, chess.WHITE), 0)
+        self.assertEqual(self.player._static_eval(draw, chess.WHITE), 0)
+
+    def test_free_queen_capture_ranks_above_quiet_move_with_tied_rollouts(self):
+        board = chess.Board("rnb1kb1r/pp1pp1pp/5p1n/q1p5/2P5/3PP3/PP1B1PPP/RN1QKBNR w KQkq - 0 5")
+        capture = chess.Move.from_uci("d2a5")
+        quiet_move = chess.Move.from_uci("a2a3")
+        player = MCTSPlayer(simulations=1)
+
+        def add_tied_children(root):
+            for move in (capture, quiet_move):
+                child_board = root.board.copy()
+                child_board.push(move)
+                child = MCTSNode(child_board, parent=root, move=move)
+                child.visits = 1
+                root.children.append(child)
+
+        player.simulate = add_tied_children
+
+        _, move_values = player.choose_move(board)
+        ranked_moves = [move for move, _, _ in move_values]
+
+        self.assertLess(ranked_moves.index(capture), ranked_moves.index(quiet_move))
+
+    def test_mobility_advantage_increases_feature_score(self):
+        open_board = chess.Board("7k/8/8/8/8/8/Q7/7K w - - 0 1")
+        restricted_board = chess.Board("7k/8/8/8/8/8/P7/7K w - - 0 1")
+
+        self.assertGreater(
+            self.player._mobility(open_board, chess.WHITE),
+            self.player._mobility(restricted_board, chess.WHITE),
+        )
+
+    def test_bishop_pair_adds_bonus(self):
+        bishop_pair = chess.Board("7k/8/8/8/8/8/8/2B2B1K w - - 0 1")
+        single_bishop = chess.Board("7k/8/8/8/8/8/8/2B4K w - - 0 1")
+
+        self.assertGreater(
+            self.player._bishop_pair_score(bishop_pair, chess.WHITE),
+            self.player._bishop_pair_score(single_bishop, chess.WHITE),
+        )
+
+    def test_doubled_and_isolated_pawns_increase_penalty(self):
+        weak_pawns = chess.Board("7k/8/8/8/8/P7/P7/7K w - - 0 1")
+        connected_pawns = chess.Board("7k/8/8/8/8/8/PP6/7K w - - 0 1")
+
+        self.assertGreater(
+            self.player._pawn_structure_penalty(weak_pawns, chess.WHITE),
+            self.player._pawn_structure_penalty(connected_pawns, chess.WHITE),
+        )
+
+    def test_centre_control_increases_feature_score(self):
+        central_knight = chess.Board("7k/8/8/8/8/2N5/8/7K w - - 0 1")
+        edge_knight = chess.Board("7k/8/8/8/8/N7/8/7K w - - 0 1")
+
+        self.assertGreater(
+            self.player._centre_control(central_knight, chess.WHITE),
+            self.player._centre_control(edge_knight, chess.WHITE),
+        )
+
+    def test_castled_king_increases_king_safety_score(self):
+        castled_king = chess.Board("7k/8/8/8/8/8/8/6K1 w - - 0 1")
+        exposed_king = chess.Board("7k/8/8/8/8/8/8/4K3 w - - 0 1")
+
+        self.assertGreater(
+            self.player._king_safety_score(castled_king, chess.WHITE),
+            self.player._king_safety_score(exposed_king, chess.WHITE),
+        )
+
+    def test_developed_minor_piece_increases_opening_feature_score(self):
+        undeveloped = chess.Board()
+        developed = chess.Board()
+        developed.push_uci("g1f3")
+        developed.push_uci("g8f6")
+
+        self.assertGreater(
+            self.player._developed_minor_score(developed, chess.WHITE),
+            self.player._developed_minor_score(undeveloped, chess.WHITE),
         )
 
 

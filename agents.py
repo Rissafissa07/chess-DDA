@@ -82,7 +82,24 @@ class MCTSPlayer:
         chess.ROOK: 5,
         chess.QUEEN: 9,
     }
+    static_piece_values = {
+        chess.PAWN: 1.0,
+        chess.KNIGHT: 3.2,
+        chess.BISHOP: 3.3,
+        chess.ROOK: 5.0,
+        chess.QUEEN: 9.0,
+    }
     material_risk_weight = 0.1
+    root_static_eval_weight = 0.35
+    static_eval_scale = 6.0
+    mobility_weight = 0.03
+    centre_control_weight = 0.10
+    bishop_pair_bonus = 0.20
+    castling_rights_bonus = 0.10
+    castled_king_bonus = 0.25
+    developed_minor_bonus = 0.10
+    doubled_pawn_penalty = 0.12
+    isolated_pawn_penalty = 0.10
     opening_max_fullmove = 8
     develop_minor_bonus = 0.08
     centre_pawn_bonus = 0.06
@@ -115,7 +132,15 @@ class MCTSPlayer:
                 mcts_value = child.wins / child.visits
                 bad_loss_penalty = self._bad_loss_penalty(board, child.move)
                 opening_bonus = self._opening_bonus(board, child.move)
-                value = mcts_value - bad_loss_penalty + opening_bonus
+                candidate_board = board.copy()
+                candidate_board.push(child.move)
+                static_value = self._static_eval(candidate_board, board.turn)
+                value = (
+                    mcts_value
+                    + self.root_static_eval_weight * static_value
+                    - bad_loss_penalty
+                    + opening_bonus
+                )
             else:
                 continue  # Skip unvisited nodes
 
@@ -230,6 +255,99 @@ class MCTSPlayer:
             bonus -= self.repeated_piece_move_penalty
 
         return bonus
+
+    def _static_eval(self, board, root_player):
+        if board.is_checkmate():
+            return 1 if board.turn != root_player else -1
+        if board.is_game_over(claim_draw=True):
+            return 0
+
+        root_score = self._static_score_for_color(board, root_player)
+        opponent_score = self._static_score_for_color(board, not root_player)
+        return math.tanh((root_score - opponent_score) / self.static_eval_scale)
+
+    def _static_score_for_color(self, board, color):
+        return (
+            self._static_material(board, color)
+            + self.mobility_weight * self._mobility(board, color)
+            + self.centre_control_weight * self._centre_control(board, color)
+            + self._bishop_pair_score(board, color)
+            + self._king_safety_score(board, color)
+            + self._developed_minor_score(board, color)
+            - self._pawn_structure_penalty(board, color)
+        )
+
+    def _static_material(self, board, color):
+        return sum(
+            len(board.pieces(piece_type, color)) * value
+            for piece_type, value in self.static_piece_values.items()
+        )
+
+    def _mobility(self, board, color):
+        mobility_board = board.copy(stack=False)
+        mobility_board.turn = color
+        return mobility_board.legal_moves.count()
+
+    def _centre_control(self, board, color):
+        central_squares = (chess.D4, chess.E4, chess.D5, chess.E5)
+        return sum(bool(board.attackers(color, square)) for square in central_squares)
+
+    def _bishop_pair_score(self, board, color):
+        if len(board.pieces(chess.BISHOP, color)) >= 2:
+            return self.bishop_pair_bonus
+        return 0
+
+    def _king_safety_score(self, board, color):
+        king_square = board.king(color)
+        castled_squares = (
+            {chess.G1, chess.C1}
+            if color == chess.WHITE
+            else {chess.G8, chess.C8}
+        )
+
+        score = 0
+        if king_square in castled_squares:
+            score += self.castled_king_bonus
+        if board.has_kingside_castling_rights(color):
+            score += self.castling_rights_bonus
+        if board.has_queenside_castling_rights(color):
+            score += self.castling_rights_bonus
+        return score
+
+    def _developed_minor_score(self, board, color):
+        if board.fullmove_number > self.opening_max_fullmove:
+            return 0
+
+        starting_squares = (
+            (chess.B1, chess.G1, chess.C1, chess.F1)
+            if color == chess.WHITE
+            else (chess.B8, chess.G8, chess.C8, chess.F8)
+        )
+        undeveloped_minors = sum(
+            board.piece_type_at(square) in (chess.KNIGHT, chess.BISHOP)
+            and board.color_at(square) == color
+            for square in starting_squares
+        )
+        developed_minors = 4 - undeveloped_minors
+        return self.developed_minor_bonus * developed_minors
+
+    def _pawn_structure_penalty(self, board, color):
+        pawns_by_file = [
+            len(board.pieces(chess.PAWN, color) & chess.BB_FILES[file_index])
+            for file_index in range(8)
+        ]
+        doubled_pawns = sum(max(0, pawn_count - 1) for pawn_count in pawns_by_file)
+        isolated_pawns = sum(
+            pawn_count
+            for file_index, pawn_count in enumerate(pawns_by_file)
+            if pawn_count > 0
+            and (file_index == 0 or pawns_by_file[file_index - 1] == 0)
+            and (file_index == 7 or pawns_by_file[file_index + 1] == 0)
+        )
+        return (
+            self.doubled_pawn_penalty * doubled_pawns
+            + self.isolated_pawn_penalty * isolated_pawns
+        )
 
     def simulate(self, node):
         current = node
