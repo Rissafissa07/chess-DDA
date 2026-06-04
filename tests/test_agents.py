@@ -206,6 +206,65 @@ class MCTSPlayerStaticEvalTests(unittest.TestCase):
             self.player._developed_minor_score(undeveloped, chess.WHITE),
         )
 
+    def test_attacking_enemy_queen_scores_higher_than_attacking_enemy_pawn(self):
+        queen_target = chess.Board("q6k/8/8/8/8/8/8/R6K w - - 0 1")
+        pawn_target = chess.Board("7k/p7/8/8/8/8/8/R6K w - - 0 1")
+
+        self.assertGreater(
+            self.player._piece_pressure_score(queen_target, chess.WHITE),
+            self.player._piece_pressure_score(pawn_target, chess.WHITE),
+        )
+
+    def test_attacking_undefended_piece_scores_higher_than_attacking_defended_piece(self):
+        undefended_queen = chess.Board("q6k/8/8/8/8/8/8/R6K w - - 0 1")
+        defended_queen = chess.Board("qr5k/8/8/8/8/8/8/R6K w - - 0 1")
+
+        self.assertGreater(
+            self.player._piece_pressure_score(undefended_queen, chess.WHITE),
+            self.player._piece_pressure_score(defended_queen, chess.WHITE),
+        )
+
+    def test_own_attacked_piece_lowers_score(self):
+        safe_queen = chess.Board("7k/8/8/8/8/8/8/Q6K w - - 0 1")
+        attacked_queen = chess.Board("r6k/8/8/8/8/8/8/Q6K w - - 0 1")
+
+        self.assertLess(
+            self.player._piece_pressure_score(attacked_queen, chess.WHITE),
+            self.player._piece_pressure_score(safe_queen, chess.WHITE),
+        )
+
+    def test_own_undefended_attacked_piece_lowers_score_more(self):
+        undefended_queen = chess.Board("r6k/8/8/8/8/8/8/Q6K w - - 0 1")
+        defended_queen = chess.Board("r6k/8/8/8/8/8/8/QR5K w - - 0 1")
+
+        self.assertLess(
+            self.player._piece_pressure_score(undefended_queen, chess.WHITE),
+            self.player._piece_pressure_score(defended_queen, chess.WHITE),
+        )
+
+    def test_move_creating_queen_attack_ranks_above_quiet_move_with_tied_rollouts(self):
+        board = chess.Board("1q5k/8/8/8/8/8/8/R6K w - - 0 1")
+        queen_attack = chess.Move.from_uci("a1b1")
+        quiet_move = chess.Move.from_uci("a1a2")
+        player = MCTSPlayer(simulations=1)
+        player._bad_loss_penalty = lambda current_board, move: 0
+        player._opening_bonus = lambda current_board, move: 0
+
+        def add_tied_children(root):
+            for move in (queen_attack, quiet_move):
+                child_board = root.board.copy()
+                child_board.push(move)
+                child = MCTSNode(child_board, parent=root, move=move)
+                child.visits = 1
+                root.children.append(child)
+
+        player.simulate = add_tied_children
+
+        _, move_values = player.choose_move(board)
+        ranked_moves = [move for move, _, _ in move_values]
+
+        self.assertLess(ranked_moves.index(queen_attack), ranked_moves.index(quiet_move))
+
 
 class AdaptiveMCTSPlayerTests(unittest.TestCase):
     def setUp(self):

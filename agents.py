@@ -100,6 +100,10 @@ class MCTSPlayer:
     developed_minor_bonus = 0.10
     doubled_pawn_penalty = 0.12
     isolated_pawn_penalty = 0.10
+    attacked_piece_weight = 0.04
+    undefended_attacked_piece_weight = 0.08
+    own_attacked_piece_penalty = 0.04
+    own_undefended_attacked_piece_penalty = 0.08
     opening_max_fullmove = 8
     develop_minor_bonus = 0.08
     centre_pawn_bonus = 0.06
@@ -274,6 +278,7 @@ class MCTSPlayer:
             + self._bishop_pair_score(board, color)
             + self._king_safety_score(board, color)
             + self._developed_minor_score(board, color)
+            + self._piece_pressure_score(board, color)
             - self._pawn_structure_penalty(board, color)
         )
 
@@ -348,6 +353,29 @@ class MCTSPlayer:
             self.doubled_pawn_penalty * doubled_pawns
             + self.isolated_pawn_penalty * isolated_pawns
         )
+
+    def _piece_pressure_score(self, board, color):
+        score = 0
+        for square, piece in board.piece_map().items():
+            if piece.piece_type == chess.KING:
+                continue
+
+            piece_value = self.static_piece_values[piece.piece_type]
+            attacked_by_color = bool(board.attackers(color, square))
+            attacked_by_opponent = bool(board.attackers(not color, square))
+            defended = bool(board.attackers(piece.color, square))
+
+            if piece.color != color and attacked_by_color:
+                score += self.attacked_piece_weight * piece_value
+                if not defended:
+                    score += self.undefended_attacked_piece_weight * piece_value
+
+            if piece.color == color and attacked_by_opponent:
+                score -= self.own_attacked_piece_penalty * piece_value
+                if not defended:
+                    score -= self.own_undefended_attacked_piece_penalty * piece_value
+
+        return score
 
     def simulate(self, node):
         current = node
