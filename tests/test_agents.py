@@ -280,6 +280,34 @@ class AdaptiveMCTSPlayerTests(unittest.TestCase):
     def test_default_top_k_is_five(self):
         self.assertEqual(AdaptiveMCTSPlayer().top_k, 5)
 
+    def test_one_early_blunder_does_not_loosen_error_cap_too_much(self):
+        player = AdaptiveMCTSPlayer()
+        player.player_model.update(0.90)
+
+        self.assertEqual(player._dynamic_error_cap(), player.min_error_cap)
+
+    def test_repeated_poor_moves_increase_error_cap(self):
+        player = AdaptiveMCTSPlayer()
+        for error in (0.22, 0.24, 0.26, 0.28):
+            player.player_model.update(error)
+
+        self.assertGreater(player._dynamic_error_cap(), player.min_error_cap)
+        self.assertLessEqual(player._dynamic_error_cap(), player.max_error_cap)
+
+    def test_consistent_low_error_play_keeps_error_cap_strict(self):
+        player = AdaptiveMCTSPlayer()
+        for error in (0.02, 0.03, 0.02, 0.03):
+            player.player_model.update(error)
+
+        self.assertEqual(player._dynamic_error_cap(), player.min_error_cap)
+
+    def test_inconsistent_play_increases_error_cap_but_does_not_exceed_maximum(self):
+        player = AdaptiveMCTSPlayer()
+        for error in (0.0, 0.60, 0.0, 0.60):
+            player.player_model.update(error)
+
+        self.assertEqual(player._dynamic_error_cap(), player.max_error_cap)
+
     def test_choose_move_only_scores_move_values_top_k_slice(self):
         player = AdaptiveMCTSPlayer(top_k=3)
         player.base_mcts.choose_move = lambda board: (self.move_values[0][0], self.move_values)
@@ -296,6 +324,52 @@ class AdaptiveMCTSPlayerTests(unittest.TestCase):
         self.assertEqual(scored_candidates, [move for move, _, _ in self.move_values[:3]])
         self.assertIn(selected_move, scored_candidates)
         self.assertIs(returned_move_values, self.move_values)
+
+    def test_candidates_above_error_cap_are_not_sampled(self):
+        player = AdaptiveMCTSPlayer(top_k=5)
+        move_values = [
+            (chess.Move.from_uci("e2e4"), 1.00, 12),
+            (chess.Move.from_uci("d2d4"), 0.92, 11),
+            (chess.Move.from_uci("g1f3"), 0.83, 10),
+            (chess.Move.from_uci("c2c4"), 0.65, 9),
+        ]
+        player.base_mcts.choose_move = lambda board: (move_values[0][0], move_values)
+
+        with (
+            patch("agents.random.random", return_value=0.999999),
+            patch.object(player, "_print_adaptive_debug") as print_debug,
+        ):
+            selected_move, _ = player.choose_move(chess.Board())
+
+        scored_moves = print_debug.call_args.kwargs["scored_moves"]
+        scored_candidates = [move for move, _, _, _, _ in scored_moves]
+
+        self.assertEqual(scored_candidates, [move for move, _, _ in move_values[:2]])
+        self.assertIn(selected_move, scored_candidates)
+
+    def test_error_cap_fallback_keeps_best_remaining_candidate_if_all_exceed_cap(self):
+        player = AdaptiveMCTSPlayer(top_k=3)
+        move_values = [
+            (chess.Move.from_uci("e2e4"), 1.00, 12),
+            (chess.Move.from_uci("d2d4"), 0.70, 11),
+            (chess.Move.from_uci("g1f3"), 0.60, 10),
+        ]
+        player.base_mcts.choose_move = lambda board: (move_values[0][0], move_values)
+        player.base_mcts._bad_loss_penalty = (
+            lambda board, move: 0.9 if move == move_values[0][0] else 0
+        )
+
+        with (
+            patch("agents.random.random", return_value=0.999999),
+            patch.object(player, "_print_adaptive_debug") as print_debug,
+        ):
+            selected_move, _ = player.choose_move(chess.Board())
+
+        scored_moves = print_debug.call_args.kwargs["scored_moves"]
+        scored_candidates = [move for move, _, _, _, _ in scored_moves]
+
+        self.assertEqual(scored_candidates, [move_values[1][0]])
+        self.assertEqual(selected_move, move_values[1][0])
 
     def test_h4_queen_hanging_move_is_severe_and_queen_retreats_are_safe(self):
         board = chess.Board("rnb1k1nr/1ppp1ppp/8/p1b1P3/P6q/2N1P1P1/1PPBQP1P/R3KBNR b KQkq - 0 8")

@@ -435,6 +435,12 @@ class BestMCTSPlayer(MCTSPlayer):
 
 class AdaptiveMCTSPlayer:
     severe_material_risk_threshold = 0.5
+    min_error_cap = 0.12
+    max_error_cap = 0.30
+    consistency_margin_weight = 0.5
+    max_consistency_margin = 0.12
+    minimum_model_observations = 4
+    model_error_window = 6
 
     def __init__(self, simulations=200, top_k=5):
         self.simulations = simulations
@@ -463,6 +469,17 @@ class AdaptiveMCTSPlayer:
         ]
         if safe_candidates:
             candidates = safe_candidates
+
+        dynamic_error_cap = self._dynamic_error_cap()
+        quality_candidates = [
+            candidate
+            for candidate in candidates
+            if best_value - candidate[1] <= dynamic_error_cap
+        ]
+        if quality_candidates:
+            candidates = quality_candidates
+        else:
+            candidates = candidates[:1]
 
         scored_moves = []
         for move, value, visits in candidates:
@@ -496,6 +513,35 @@ class AdaptiveMCTSPlayer:
         )
 
         return selected_move, move_values
+
+    def _dynamic_error_cap(self):
+        errors = self.player_model.errors
+        if len(errors) < self.minimum_model_observations:
+            return self.min_error_cap
+
+        recent_errors = errors[-self.model_error_window:]
+        smoothed_average_error = sum(recent_errors) / len(recent_errors)
+
+        if len(recent_errors) < 2:
+            consistency = 0
+        else:
+            squared_differences = [
+                (error - smoothed_average_error) ** 2
+                for error in recent_errors
+            ]
+            consistency = math.sqrt(sum(squared_differences) / len(squared_differences))
+
+        consistency_margin = min(
+            self.max_consistency_margin,
+            self.consistency_margin_weight * consistency,
+        )
+        return min(
+            self.max_error_cap,
+            max(
+                self.min_error_cap,
+                smoothed_average_error + consistency_margin,
+            ),
+        )
 
     def _print_adaptive_debug(
         self,
