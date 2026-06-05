@@ -120,6 +120,7 @@ input {
 }
 
 .square {
+  position: relative;
   width: 100%;
   aspect-ratio: 1;
   border: 0;
@@ -128,6 +129,32 @@ input {
   font-size: clamp(28px, 7vw, 52px);
   line-height: 1;
   cursor: pointer;
+}
+
+.piece {
+  position: relative;
+  z-index: 1;
+}
+
+.coordinate {
+  position: absolute;
+  z-index: 2;
+  color: rgba(36, 49, 58, 0.72);
+  font-size: clamp(9px, 1.6vw, 12px);
+  font-weight: 700;
+  line-height: 1;
+  pointer-events: none;
+  text-transform: uppercase;
+}
+
+.rank-coordinate {
+  top: 5px;
+  left: 5px;
+}
+
+.file-coordinate {
+  right: 5px;
+  bottom: 5px;
 }
 
 .square.light {

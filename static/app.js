@@ -104,12 +104,11 @@ function renderBoard() {
     ? [...gameState.board].reverse().map((row) => [...row].reverse())
     : gameState.board;
 
-  for (const row of rows) {
-    for (const square of row) {
+  for (const [rowIndex, row] of rows.entries()) {
+    for (const [columnIndex, square] of row.entries()) {
       const button = document.createElement("button");
       button.className = "square";
       button.dataset.square = square.square;
-      button.textContent = square.piece ? pieceSymbols[square.piece] : "";
       button.setAttribute("aria-label", square.square);
 
       const file = square.square.charCodeAt(0) - "a".charCodeAt(0);
@@ -125,6 +124,27 @@ function renderBoard() {
       }
       if (isLegalDestination(square.square)) {
         button.classList.add("legal-target");
+      }
+
+      if (square.piece) {
+        const piece = document.createElement("span");
+        piece.className = "piece";
+        piece.textContent = pieceSymbols[square.piece];
+        button.appendChild(piece);
+      }
+
+      if (columnIndex === 0) {
+        const rankLabel = document.createElement("span");
+        rankLabel.className = "coordinate rank-coordinate";
+        rankLabel.textContent = square.square[1];
+        button.appendChild(rankLabel);
+      }
+
+      if (rowIndex === rows.length - 1) {
+        const fileLabel = document.createElement("span");
+        fileLabel.className = "coordinate file-coordinate";
+        fileLabel.textContent = square.square[0];
+        button.appendChild(fileLabel);
       }
 
       button.addEventListener("click", () => handleSquareClick(square.square));
