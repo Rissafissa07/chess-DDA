@@ -100,6 +100,9 @@ class MCTSPlayer:
     developed_minor_bonus = 0.10
     doubled_pawn_penalty = 0.12
     isolated_pawn_penalty = 0.10
+    passed_pawn_base_bonus = 0.08
+    passed_pawn_advance_bonus = 0.04
+    blocked_passed_pawn_multiplier = 0.45
     attacked_piece_weight = 0.04
     undefended_attacked_piece_weight = 0.08
     own_attacked_piece_penalty = 0.04
@@ -279,6 +282,7 @@ class MCTSPlayer:
             + self._king_safety_score(board, color)
             + self._developed_minor_score(board, color)
             + self._piece_pressure_score(board, color)
+            + self._passed_pawn_score(board, color)
             - self._pawn_structure_penalty(board, color)
         )
 
@@ -353,6 +357,60 @@ class MCTSPlayer:
             self.doubled_pawn_penalty * doubled_pawns
             + self.isolated_pawn_penalty * isolated_pawns
         )
+
+    def _passed_pawn_score(self, board, color):
+        def passed_pawn_value(square, pawn_color):
+            rank = chess.square_rank(square)
+            file_index = chess.square_file(square)
+            if pawn_color == chess.WHITE:
+                advancement = rank - 1
+                front_rank = rank + 1
+            else:
+                advancement = 6 - rank
+                front_rank = rank - 1
+
+            advancement = max(0, min(5, advancement))
+            value = (
+                self.passed_pawn_base_bonus
+                + self.passed_pawn_advance_bonus * advancement
+            )
+
+            if 0 <= front_rank <= 7:
+                front_square = chess.square(file_index, front_rank)
+                if board.piece_at(front_square) is not None:
+                    value *= self.blocked_passed_pawn_multiplier
+
+            return value
+
+        own_score = sum(
+            passed_pawn_value(square, color)
+            for square in board.pieces(chess.PAWN, color)
+            if self._is_passed_pawn(board, square, color)
+        )
+        enemy_score = sum(
+            passed_pawn_value(square, not color)
+            for square in board.pieces(chess.PAWN, not color)
+            if self._is_passed_pawn(board, square, not color)
+        )
+        return own_score - enemy_score
+
+    def _is_passed_pawn(self, board, square, color):
+        file_index = chess.square_file(square)
+        rank = chess.square_rank(square)
+        adjacent_files = range(max(0, file_index - 1), min(7, file_index + 1) + 1)
+
+        for enemy_square in board.pieces(chess.PAWN, not color):
+            enemy_file = chess.square_file(enemy_square)
+            if enemy_file not in adjacent_files:
+                continue
+
+            enemy_rank = chess.square_rank(enemy_square)
+            if color == chess.WHITE and enemy_rank > rank:
+                return False
+            if color == chess.BLACK and enemy_rank < rank:
+                return False
+
+        return True
 
     def _piece_pressure_score(self, board, color):
         score = 0

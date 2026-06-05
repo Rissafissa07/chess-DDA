@@ -177,6 +177,33 @@ class MCTSPlayerStaticEvalTests(unittest.TestCase):
             self.player._pawn_structure_penalty(connected_pawns, chess.WHITE),
         )
 
+    def test_advanced_passed_pawn_scores_higher_than_distant_passed_pawn(self):
+        advanced_pawn = chess.Board("7k/8/3P4/8/8/8/8/7K w - - 0 1")
+        distant_pawn = chess.Board("7k/8/8/8/8/3P4/8/7K w - - 0 1")
+
+        self.assertGreater(
+            self.player._passed_pawn_score(advanced_pawn, chess.WHITE),
+            self.player._passed_pawn_score(distant_pawn, chess.WHITE),
+        )
+
+    def test_blocked_passed_pawn_scores_lower_than_unblocked_passed_pawn(self):
+        unblocked_pawn = chess.Board("7k/8/3P4/8/8/8/8/7K w - - 0 1")
+        blocked_pawn = chess.Board("7k/3n4/3P4/8/8/8/8/7K w - - 0 1")
+
+        self.assertLess(
+            self.player._passed_pawn_score(blocked_pawn, chess.WHITE),
+            self.player._passed_pawn_score(unblocked_pawn, chess.WHITE),
+        )
+
+    def test_enemy_advanced_passed_pawn_lowers_evaluated_side_score(self):
+        quiet_position = chess.Board("7k/8/8/8/8/8/8/7K w - - 0 1")
+        enemy_passer = chess.Board("7k/8/8/8/8/8/3p4/7K w - - 0 1")
+
+        self.assertLess(
+            self.player._passed_pawn_score(enemy_passer, chess.WHITE),
+            self.player._passed_pawn_score(quiet_position, chess.WHITE),
+        )
+
     def test_centre_control_increases_feature_score(self):
         central_knight = chess.Board("7k/8/8/8/8/2N5/8/7K w - - 0 1")
         edge_knight = chess.Board("7k/8/8/8/8/N7/8/7K w - - 0 1")
@@ -264,6 +291,29 @@ class MCTSPlayerStaticEvalTests(unittest.TestCase):
         ranked_moves = [move for move, _, _ in move_values]
 
         self.assertLess(ranked_moves.index(queen_attack), ranked_moves.index(quiet_move))
+
+    def test_move_blocking_dangerous_passed_pawn_ranks_above_quiet_move_with_tied_rollouts(self):
+        board = chess.Board("6k1/7r/3P4/8/8/8/8/6K1 b - - 0 1")
+        block_pawn = chess.Move.from_uci("h7d7")
+        quiet_move = chess.Move.from_uci("h7h8")
+        player = MCTSPlayer(simulations=1)
+        player._bad_loss_penalty = lambda current_board, move: 0
+        player._opening_bonus = lambda current_board, move: 0
+
+        def add_tied_children(root):
+            for move in (block_pawn, quiet_move):
+                child_board = root.board.copy()
+                child_board.push(move)
+                child = MCTSNode(child_board, parent=root, move=move)
+                child.visits = 1
+                root.children.append(child)
+
+        player.simulate = add_tied_children
+
+        _, move_values = player.choose_move(board)
+        ranked_moves = [move for move, _, _ in move_values]
+
+        self.assertLess(ranked_moves.index(block_pawn), ranked_moves.index(quiet_move))
 
 
 class AdaptiveMCTSPlayerTests(unittest.TestCase):
