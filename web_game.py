@@ -7,6 +7,23 @@ import chess
 from agents import AdaptiveMCTSPlayer, BestMCTSPlayer, find_move_error
 
 
+adaptive_log_fields = (
+    "selected_move_rank",
+    "selected_move_value",
+    "best_move_value",
+    "selected_move_error",
+    "target_error",
+    "temperature",
+    "dynamic_error_cap",
+    "candidate_count",
+    "candidate_count_after_cap",
+    "chosen_move_passed_cap",
+    "player_avg_error",
+    "player_recent_error",
+    "player_consistency",
+)
+
+
 class WebChessGame:
     def __init__(self, human_color="white", opponent_type="adaptive_mcts", simulations=100):
         if human_color not in ("white", "black"):
@@ -102,6 +119,11 @@ class WebChessGame:
             agent_type=self.opponent_player.__class__.__name__,
             move_values=move_values,
             move_error=None,
+            adaptive_decision_info=(
+                self.adaptive_player.last_decision_info
+                if self.opponent_role == "adaptive_mcts"
+                else None
+            ),
         )
 
     def play_adaptive_move(self):
@@ -124,7 +146,15 @@ class WebChessGame:
 
         raise ValueError("Illegal move.")
 
-    def push_logged_move(self, move, role, agent_type, move_values, move_error):
+    def push_logged_move(
+        self,
+        move,
+        role,
+        agent_type,
+        move_values,
+        move_error,
+        adaptive_decision_info=None,
+    ):
         color = self.current_color()
         phase = self.phase_for_current_move()
 
@@ -137,6 +167,8 @@ class WebChessGame:
             "move_values": move_values,
             "move_error": move_error,
         }
+        if role == "adaptive_mcts" and adaptive_decision_info is not None:
+            move_info.update(adaptive_decision_info)
 
         self.board.push(move)
         self.move_history.append(move_info)
@@ -188,7 +220,7 @@ class WebChessGame:
         return squares
 
     def serialize_move_info(self, move_info):
-        return {
+        serialized_info = {
             "color": move_info["color"],
             "role": move_info["role"],
             "agent_type": move_info["agent_type"],
@@ -197,6 +229,10 @@ class WebChessGame:
             "move_values": self.serialize_move_values(move_info["move_values"]),
             "move_error": move_info["move_error"],
         }
+        for field in adaptive_log_fields:
+            if field in move_info:
+                serialized_info[field] = move_info[field]
+        return serialized_info
 
     def serialize_move_values(self, move_values):
         if move_values is None:

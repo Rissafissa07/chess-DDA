@@ -1,4 +1,7 @@
 import unittest
+from unittest.mock import patch
+
+import chess
 
 from web_game import WebChessGame
 
@@ -19,6 +22,77 @@ class WebChessGameTests(unittest.TestCase):
         self.assertEqual(first_move["color"], "white")
         self.assertEqual(first_move["role"], "best_mcts")
         self.assertEqual(first_move["agent_type"], "BestMCTSPlayer")
+
+    def test_adaptive_move_log_includes_decision_fields(self):
+        game = WebChessGame(human_color="white", opponent_type="adaptive_mcts", simulations=1)
+        move_values = [
+            (chess.Move.from_uci("g8f6"), 1.00, 12),
+            (chess.Move.from_uci("d7d5"), 0.92, 10),
+            (chess.Move.from_uci("e7e5"), 0.60, 8),
+        ]
+        game.adaptive_player.base_mcts.choose_move = (
+            lambda board: (move_values[0][0], move_values)
+        )
+        game.adaptive_player.base_mcts._bad_loss_penalty = lambda board, move: 0
+
+        with (
+            patch("agents.random.random", return_value=0.999999),
+            patch.object(game.adaptive_player, "_print_adaptive_debug"),
+        ):
+            game.play_human_move("e2e4")
+
+        adaptive_move = game.log_data()["moves"][-1]
+        expected_fields = {
+            "selected_move_rank",
+            "selected_move_value",
+            "best_move_value",
+            "selected_move_error",
+            "target_error",
+            "temperature",
+            "dynamic_error_cap",
+            "candidate_count",
+            "candidate_count_after_cap",
+            "chosen_move_passed_cap",
+            "player_avg_error",
+            "player_recent_error",
+            "player_consistency",
+        }
+
+        self.assertEqual(adaptive_move["role"], "adaptive_mcts")
+        self.assertTrue(expected_fields.issubset(adaptive_move.keys()))
+
+    def test_adaptive_move_log_records_error_rank_and_cap_counts(self):
+        game = WebChessGame(human_color="white", opponent_type="adaptive_mcts", simulations=1)
+        move_values = [
+            (chess.Move.from_uci("g8f6"), 1.00, 12),
+            (chess.Move.from_uci("d7d5"), 0.92, 10),
+            (chess.Move.from_uci("e7e5"), 0.60, 8),
+        ]
+        game.adaptive_player.base_mcts.choose_move = (
+            lambda board: (move_values[0][0], move_values)
+        )
+        game.adaptive_player.base_mcts._bad_loss_penalty = lambda board, move: 0
+
+        with (
+            patch("agents.random.random", return_value=0.999999),
+            patch.object(game.adaptive_player, "_print_adaptive_debug"),
+        ):
+            game.play_human_move("e2e4")
+
+        adaptive_move = game.log_data()["moves"][-1]
+
+        self.assertEqual(adaptive_move["move"], "d7d5")
+        self.assertEqual(adaptive_move["selected_move_rank"], 2)
+        self.assertEqual(adaptive_move["best_move_value"], 1.00)
+        self.assertEqual(adaptive_move["selected_move_value"], 0.92)
+        self.assertAlmostEqual(
+            adaptive_move["selected_move_error"],
+            adaptive_move["best_move_value"] - adaptive_move["selected_move_value"],
+        )
+        self.assertLessEqual(
+            adaptive_move["candidate_count_after_cap"],
+            adaptive_move["candidate_count"],
+        )
 
 
 if __name__ == "__main__":

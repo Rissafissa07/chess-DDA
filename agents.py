@@ -505,8 +505,10 @@ class AdaptiveMCTSPlayer:
         self.top_k = top_k
         self.base_mcts = MCTSPlayer(simulations=simulations)
         self.player_model = PlayerModel() 
+        self.last_decision_info = None
 
     def choose_move(self, board):
+        self.last_decision_info = None
         best_move, move_values = self.base_mcts.choose_move(board)
 
         if move_values is None or len(move_values) == 0:
@@ -519,6 +521,7 @@ class AdaptiveMCTSPlayer:
         temperature = max(0.05, consistency_threshold)  # Ensure temperature is not too low, will be adjusted if necessary
 
         candidates = move_values[:self.top_k]
+        candidate_count = len(candidates)
         safe_candidates = [
             candidate
             for candidate in candidates
@@ -538,6 +541,7 @@ class AdaptiveMCTSPlayer:
             candidates = quality_candidates
         else:
             candidates = candidates[:1]
+        candidate_count_after_cap = len(candidates)
 
         scored_moves = []
         for move, value, visits in candidates:
@@ -560,6 +564,31 @@ class AdaptiveMCTSPlayer:
                     selected_move = move
                     break
 
+        selected_move_rank, selected_move_value = self._selected_move_details(
+            selected_move,
+            move_values,
+        )
+        selected_move_error = best_value - selected_move_value
+        self.last_decision_info = {
+            "selected_move_rank": selected_move_rank,
+            "selected_move_value": selected_move_value,
+            "best_move_value": best_value,
+            "selected_move_error": selected_move_error,
+            "target_error": target_error,
+            "temperature": temperature,
+            "dynamic_error_cap": dynamic_error_cap,
+            "candidate_count": candidate_count,
+            "candidate_count_after_cap": candidate_count_after_cap,
+            "chosen_move_passed_cap": selected_move_error <= dynamic_error_cap,
+            "player_avg_error": self.player_model.average_error(),
+            "player_recent_error": (
+                self.player_model.errors[-1]
+                if self.player_model.errors
+                else None
+            ),
+            "player_consistency": consistency_threshold,
+        }
+
         self._print_adaptive_debug(
             best_move=best_move,
             target_error=target_error,
@@ -571,6 +600,13 @@ class AdaptiveMCTSPlayer:
         )
 
         return selected_move, move_values
+
+    def _selected_move_details(self, selected_move, move_values):
+        for rank, (move, value, visits) in enumerate(move_values, start=1):
+            if move == selected_move:
+                return rank, value
+
+        return None, None
 
     def _dynamic_error_cap(self):
         errors = self.player_model.errors
