@@ -15,6 +15,7 @@ const pieceSymbols = {
 
 let gameState = null;
 let selectedSquare = null;
+let hoveredLegalDestination = null;
 let isBusy = false;
 
 const boardElement = document.querySelector("#board");
@@ -82,6 +83,7 @@ async function applyResponse(response, successMessage) {
 
   gameState = data;
   selectedSquare = null;
+  hoveredLegalDestination = null;
   render();
   showMessage(successMessage);
 }
@@ -125,6 +127,9 @@ function renderBoard() {
       if (isLegalDestination(square.square)) {
         button.classList.add("legal-target");
       }
+      if (square.square === hoveredLegalDestination && isLegalDestination(square.square)) {
+        button.classList.add("legal-move-hover");
+      }
 
       if (square.piece) {
         const piece = document.createElement("span");
@@ -148,10 +153,9 @@ function renderBoard() {
       }
 
       button.addEventListener("click", () => handleSquareClick(square.square));
-      button.addEventListener("dragstart", (event) => handleDragStart(event, square.square, square.piece));
-      button.addEventListener("dragover", handleDragOver);
-      button.addEventListener("drop", (event) => handleDrop(event, square.square));
-      button.draggable = canStartMoveFrom(square.square, square.piece);
+      button.addEventListener("mouseenter", (event) => handleSquareMouseEnter(event, square.square));
+      button.addEventListener("mouseleave", handleSquareMouseLeave);
+      button.draggable = false;
       boardElement.appendChild(button);
     }
   }
@@ -164,6 +168,7 @@ function handleSquareClick(square) {
 
   if (!selectedSquare) {
     selectedSquare = square;
+    hoveredLegalDestination = null;
     renderBoard();
     return;
   }
@@ -176,47 +181,26 @@ function handleSquareClick(square) {
 
   showMessage("Illegal move");
   selectedSquare = square;
+  hoveredLegalDestination = null;
   renderBoard();
 }
 
-function handleDragStart(event, square, piece) {
-  if (!canStartMoveFrom(square, piece)) {
-    event.preventDefault();
+function handleSquareMouseEnter(event, square) {
+  if (!isLegalDestination(square)) {
     return;
   }
 
-  selectedSquare = square;
-  event.dataTransfer.setData("text/plain", square);
-  event.dataTransfer.effectAllowed = "move";
-  event.currentTarget.classList.add("selected");
+  hoveredLegalDestination = square;
+  event.currentTarget.classList.add("legal-move-hover");
 }
 
-function handleDragOver(event) {
-  if (!isBusy && gameState && gameState.current_role === "human" && !isGameOver()) {
-    event.preventDefault();
-  }
-}
-
-function handleDrop(event, targetSquare) {
-  event.preventDefault();
-  if (isBusy || !gameState || gameState.current_role !== "human" || isGameOver()) {
+function handleSquareMouseLeave(event) {
+  if (hoveredLegalDestination === null) {
     return;
   }
 
-  const sourceSquare = event.dataTransfer.getData("text/plain") || selectedSquare;
-  if (!sourceSquare) {
-    return;
-  }
-
-  const move = sourceSquare + targetSquare;
-  if (isLegalMove(move)) {
-    makeMove(move);
-    return;
-  }
-
-  showMessage("Illegal move");
-  selectedSquare = null;
-  renderBoard();
+  hoveredLegalDestination = null;
+  event.currentTarget.classList.remove("legal-move-hover");
 }
 
 function canStartMoveFrom(square, piece) {
