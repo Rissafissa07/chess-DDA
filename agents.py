@@ -12,19 +12,22 @@ class PlayerModel:
         self.errors = []
 
     def update(self, error):
+        # We only update the model with errors from the player's own moves, not the opponent's moves. This way, the model learns to predict the player's own performance and adjust accordingly.
         if error is not None:
             self.errors.append(error)
 
     def average_error(self):
+        # If we have no data, we can return a default value (e.g., 0) or a neutral threshold. For now, we'll return 0 to indicate no observed error.
         if len(self.errors) == 0:
             return 0
 
         return sum(self.errors) / len(self.errors)
 
     def consistency(self):
+        # Consistency is measured as the standard deviation of the errors. A lower value indicates more consistent performance, while a higher value indicates more variability in the player's move quality.
         if len(self.errors) < 2:
             return 0
-
+        # We calculate the standard deviation of the errors to measure consistency. A lower standard deviation indicates that the player's move quality is more consistent, while a higher standard deviation indicates more variability in the player's performance.
         avg = self.average_error()
         squared_differences = [(error - avg) ** 2 for error in self.errors]
         variance = sum(squared_differences) / len(squared_differences)
@@ -32,27 +35,29 @@ class PlayerModel:
         return math.sqrt(variance)
 
     def blunder_rate(self, threshold=0.5):
+        # Blunder rate is the percentage of moves where the error exceeds a certain threshold. This can help identify how often the player makes very poor moves.
         if len(self.errors) == 0:
             return 0
-
+        # We calculate the blunder rate by counting how many errors exceed the specified threshold and dividing by the total number of errors. This gives us a percentage of moves that are considered blunders based on the defined threshold.
         blunders = [error for error in self.errors if error >= threshold]
         return len(blunders) / len(self.errors)
 
 def find_move_error(chosen_move, move_values):
+    # move_values is a list of (move, value, visits) tuples sorted by value descending
     if move_values is None or len(move_values) == 0:
         return None
-
+    # We calculate the move error as the difference between the best move value and the chosen move value. This gives us a measure of how much worse the chosen move is compared to the best move according to the MCTS evaluation.
     best_value = move_values[0][1]
     chosen_value = None
 
     for move, value, visits in move_values:
         if move == chosen_move:
-            chosen_value = value
+            chosen_value = value # We find the value of the chosen move by iterating through the move values and matching the move. If we find a match, we store its value for error calculation.
             break
 
     if chosen_value is None:
         return None
-
+    # Finally, we return the error as the difference between the best move value and the chosen move value. A higher error indicates that the chosen move is significantly worse than the best move, while a lower error indicates that the chosen move is closer in quality to the best move.
     return best_value - chosen_value
 
 class MCTSNode:
@@ -89,42 +94,44 @@ class MCTSPlayer:
         chess.ROOK: 5.0,
         chess.QUEEN: 9.0,
     }
-    material_risk_weight = 0.1
-    root_static_eval_weight = 0.35
-    static_eval_scale = 6.0
-    mobility_weight = 0.03
-    centre_control_weight = 0.10
-    bishop_pair_bonus = 0.20
-    castling_rights_bonus = 0.10
-    castled_king_bonus = 0.25
-    developed_minor_bonus = 0.10
-    doubled_pawn_penalty = 0.12
-    isolated_pawn_penalty = 0.10
-    passed_pawn_base_bonus = 0.08
-    passed_pawn_advance_bonus = 0.04
-    blocked_passed_pawn_multiplier = 0.45
-    king_pressure_attack_weight = 0.04
-    king_pressure_near_king_weight = 0.06
-    king_pressure_direct_check_weight = 0.12
-    own_king_pressure_penalty = 0.06
-    own_king_direct_check_penalty = 0.12
-    attacked_piece_weight = 0.04
-    undefended_attacked_piece_weight = 0.08
-    own_attacked_piece_penalty = 0.04
-    own_undefended_attacked_piece_penalty = 0.08
-    opening_max_fullmove = 8
-    develop_minor_bonus = 0.08
-    centre_pawn_bonus = 0.06
-    central_minor_bonus = 0.04
-    castling_bonus = 0.12
-    early_queen_move_penalty = 0.10
-    repeated_piece_move_penalty = 0.06
-    rollout_depth = 30
+    material_risk_weight = 0.1 # Material-loss penalty
+    root_static_eval_weight = 0.35 # Root static-eval blend
+    static_eval_scale = 6.0 # Static-eval scaling
+    mobility_weight = 0.03 # Piece mobility
+    centre_control_weight = 0.10 # Centre control
+    bishop_pair_bonus = 0.20 # Bishop pair bonus
+    castling_rights_bonus = 0.10 # Keep castling rights
+    castled_king_bonus = 0.25 # Castled king bonus
+    developed_minor_bonus = 0.10 # Developed minor pieces
+    doubled_pawn_penalty = 0.12 # Doubled pawns
+    isolated_pawn_penalty = 0.10 # Isolated pawns
+    passed_pawn_base_bonus = 0.08 # Passed pawn bonus
+    passed_pawn_advance_bonus = 0.04 # Advanced passer bonus
+    blocked_passed_pawn_multiplier = 0.45 # Blocked passer reduction
+    king_pressure_attack_weight = 0.04 # King attack pressure
+    king_pressure_near_king_weight = 0.06 # Near-king pressure
+    king_pressure_direct_check_weight = 0.12 # Direct check pressure
+    own_king_pressure_penalty = 0.06 # Own king pressure
+    own_king_direct_check_penalty = 0.12 # Own king in check
+    attacked_piece_weight = 0.04 # Attacking enemy pieces
+    undefended_attacked_piece_weight = 0.08 # Attacking loose pieces
+    own_attacked_piece_penalty = 0.04 # Own attacked pieces
+    own_undefended_attacked_piece_penalty = 0.08 # Own loose pieces
+    opening_max_fullmove = 8 # Opening phase limit
+    develop_minor_bonus = 0.08 # Opening development
+    centre_pawn_bonus = 0.06 # Central pawns
+    central_minor_bonus = 0.04 # Central minor pieces
+    castling_bonus = 0.12 # Opening castling
+    early_queen_move_penalty = 0.10 # Early queen moves
+    repeated_piece_move_penalty = 0.06 # Repeated opening moves
+    rollout_depth = 30 # Rollout cutoff depth
 
     def __init__(self, simulations=200):
+        # We initialize the MCTS player with a specified number of simulations to perform when choosing a move. This parameter controls how much computation the MCTS will do to evaluate the possible moves and build the search tree before making a decision.
         self.simulations = simulations
 
     def choose_move(self, board):
+        # We create a root node for the MCTS with the current board state. This node will be the starting point for our simulations and will represent the current position from which we want to choose a move.
         root = MCTSNode(board.copy())
         # Run simulations to build the tree
         for _ in range(self.simulations):
