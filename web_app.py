@@ -5,7 +5,7 @@ from web_game import WebChessGame
 
 app = Flask(__name__)
 current_game = None
-DEFAULT_MCTS_SIMULATIONS = 100
+DEFAULT_MCTS_SIMULATIONS = 400
 
 
 @app.route("/")
