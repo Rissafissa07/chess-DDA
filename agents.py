@@ -119,6 +119,7 @@ class MCTSPlayer:
     castling_bonus = 0.12
     early_queen_move_penalty = 0.10
     repeated_piece_move_penalty = 0.06
+    rollout_depth = 30
 
     def __init__(self, simulations=200):
         self.simulations = simulations
@@ -534,12 +535,17 @@ class MCTSPlayer:
             current = current.parent
 
     def rollout(self, board):
-        # Perform a random rollout until the game ends
-        while not board.is_game_over():
+        for _ in range(self.rollout_depth):
+            if board.is_game_over(claim_draw=True):
+                break
+
             move = random.choice(list(board.legal_moves))
             board.push(move)
-        # Determine the result of the game
-        result = board.result()
+
+        if not board.is_game_over(claim_draw=True):
+            return self._static_eval(board, chess.WHITE)
+
+        result = board.result(claim_draw=True)
 
         if result == "1-0":
             return 1

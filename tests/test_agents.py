@@ -129,6 +129,38 @@ class MCTSPlayerStaticEvalTests(unittest.TestCase):
         self.assertEqual(self.player._static_eval(stalemate, chess.WHITE), 0)
         self.assertEqual(self.player._static_eval(draw, chess.WHITE), 0)
 
+    def test_rollout_uses_terminal_result_before_static_cutoff(self):
+        checkmate = chess.Board("7k/6Q1/6K1/8/8/8/8/8 b - - 0 1")
+        self.player.rollout_depth = 30
+
+        with patch.object(self.player, "_static_eval", return_value=-0.5) as static_eval:
+            result = self.player.rollout(checkmate)
+
+        self.assertEqual(result, 1)
+        static_eval.assert_not_called()
+
+    def test_rollout_stops_at_depth_and_uses_static_cutoff(self):
+        board = chess.Board()
+        self.player.rollout_depth = 2
+
+        with (
+            patch("agents.random.choice", side_effect=lambda moves: moves[0]) as choice,
+            patch.object(self.player, "_static_eval", return_value=0.25) as static_eval,
+        ):
+            result = self.player.rollout(board)
+
+        self.assertEqual(result, 0.25)
+        self.assertEqual(choice.call_count, 2)
+        static_eval.assert_called_once()
+
+    def test_rollout_static_cutoff_keeps_white_positive_sign_convention(self):
+        white_advantage = chess.Board("7k/8/8/8/8/8/Q7/7K w - - 0 1")
+        black_advantage = chess.Board("7k/8/q7/8/8/8/8/7K w - - 0 1")
+        self.player.rollout_depth = 0
+
+        self.assertGreater(self.player.rollout(white_advantage), 0)
+        self.assertLess(self.player.rollout(black_advantage), 0)
+
     def test_free_queen_capture_ranks_above_quiet_move_with_tied_rollouts(self):
         board = chess.Board("rnb1kb1r/pp1pp1pp/5p1n/q1p5/2P5/3PP3/PP1B1PPP/RN1QKBNR w KQkq - 0 5")
         capture = chess.Move.from_uci("d2a5")
