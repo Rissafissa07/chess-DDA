@@ -403,6 +403,55 @@ class AdaptiveMCTSPlayerTests(unittest.TestCase):
 
         self.assertEqual(player._dynamic_error_cap(), player.max_error_cap)
 
+    def test_opening_board_keeps_dynamic_error_cap_strict_despite_high_errors(self):
+        player = AdaptiveMCTSPlayer()
+        for error in (0.22, 0.24, 0.26, 0.28):
+            player.player_model.update(error)
+
+        self.assertEqual(player._dynamic_error_cap(chess.Board()), player.min_error_cap)
+
+    def test_middlegame_board_allows_dynamic_error_cap_to_increase(self):
+        board = chess.Board()
+        board.fullmove_number = 9
+        player = AdaptiveMCTSPlayer()
+        for error in (0.22, 0.24, 0.26, 0.28):
+            player.player_model.update(error)
+
+        self.assertGreater(player._dynamic_error_cap(board), player.min_error_cap)
+
+    def test_strong_player_opening_keeps_dynamic_error_cap_strict(self):
+        player = AdaptiveMCTSPlayer()
+        for error in (0.02, 0.03, 0.02, 0.03):
+            player.player_model.update(error)
+
+        self.assertEqual(player._dynamic_error_cap(chess.Board()), player.min_error_cap)
+
+    def test_opening_candidate_filtering_uses_strict_cap(self):
+        player = AdaptiveMCTSPlayer(top_k=5)
+        move_values = [
+            (chess.Move.from_uci("e2e4"), 1.00, 12),
+            (chess.Move.from_uci("d2d4"), 0.92, 11),
+            (chess.Move.from_uci("g1f3"), 0.83, 10),
+            (chess.Move.from_uci("c2c4"), 0.75, 9),
+            (chess.Move.from_uci("b1c3"), 0.70, 8),
+        ]
+        for error in (0.22, 0.24, 0.26, 0.28):
+            player.player_model.update(error)
+        player.base_mcts.choose_move = lambda board: (move_values[0][0], move_values)
+        player.base_mcts._bad_loss_penalty = lambda board, move: 0
+
+        with (
+            patch("agents.random.random", return_value=0.999999),
+            patch.object(player, "_print_adaptive_debug") as print_debug,
+        ):
+            selected_move, _ = player.choose_move(chess.Board())
+
+        scored_moves = print_debug.call_args.kwargs["scored_moves"]
+        scored_candidates = [move for move, _, _, _, _ in scored_moves]
+
+        self.assertEqual(scored_candidates, [move for move, _, _ in move_values[:2]])
+        self.assertIn(selected_move, scored_candidates)
+
     def test_choose_move_only_scores_move_values_top_k_slice(self):
         player = AdaptiveMCTSPlayer(top_k=3)
         player.base_mcts.choose_move = lambda board: (self.move_values[0][0], self.move_values)

@@ -598,7 +598,7 @@ class AdaptiveMCTSPlayer:
         if safe_candidates:
             candidates = safe_candidates
 
-        dynamic_error_cap = self._dynamic_error_cap()
+        dynamic_error_cap = self._dynamic_error_cap(board)
         quality_candidates = [
             candidate
             for candidate in candidates
@@ -675,7 +675,10 @@ class AdaptiveMCTSPlayer:
 
         return None, None
 
-    def _dynamic_error_cap(self):
+    def _dynamic_error_cap(self, board=None):
+        if board is not None and board.fullmove_number <= self.base_mcts.opening_max_fullmove:
+            return self.min_error_cap
+
         errors = self.player_model.errors
         if len(errors) < self.minimum_model_observations:
             return self.min_error_cap
