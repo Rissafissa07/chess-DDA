@@ -90,6 +90,32 @@ input {
   cursor: wait;
 }
 
+.replay-mode {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid #d8e0e6;
+}
+
+.replay-mode button {
+  width: 100%;
+  min-height: 38px;
+  border: 1px solid #40515e;
+  border-radius: 6px;
+  color: #ffffff;
+  background: #40515e;
+  cursor: pointer;
+}
+
+.replay-mode button:hover {
+  background: #2f3d47;
+}
+
+.replay-mode button:disabled {
+  background: #8ea4b2;
+  border-color: #8ea4b2;
+  cursor: wait;
+}
+
 .message {
   min-height: 44px;
   margin: 14px 0 0;

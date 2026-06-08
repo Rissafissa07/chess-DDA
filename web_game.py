@@ -25,7 +25,17 @@ adaptive_log_fields = (
 
 
 class WebChessGame:
-    def __init__(self, human_color="white", opponent_type="adaptive_mcts", simulations=100):
+    def __init__(
+        self,
+        human_color="white",
+        opponent_type="adaptive_mcts",
+        simulations=100,
+        autoplay=True,
+        mode="normal",
+        replay_source=None,
+        replay_until_ply=None,
+        replay_start_fen=None,
+    ):
         if human_color not in ("white", "black"):
             raise ValueError("human_color must be 'white' or 'black'")
         if opponent_type not in ("adaptive_mcts", "best_mcts"):
@@ -50,9 +60,61 @@ class WebChessGame:
             "middlegame": [],
             "endgame": [],
         }
+        self.mode = mode
+        self.replay_source = replay_source
+        self.replay_until_ply = replay_until_ply
+        self.replay_start_fen = replay_start_fen
 
-        if self.current_role() == self.opponent_role:
+        if autoplay and self.current_role() == self.opponent_role:
             self.play_opponent_move()
+
+    @classmethod
+    def from_replay_log(
+        cls,
+        log_data,
+        replay_until_ply,
+        replay_source=None,
+        simulations=100,
+    ):
+        moves = log_data.get("moves", [])
+        if replay_until_ply < 0 or replay_until_ply > len(moves):
+            raise ValueError("replay_until_ply must be between 0 and the number of logged moves.")
+
+        white_role = log_data.get("white_role")
+        black_role = log_data.get("black_role")
+        if white_role == "human" and black_role in ("adaptive_mcts", "best_mcts"):
+            human_color = "white"
+            opponent_type = black_role
+        elif black_role == "human" and white_role in ("adaptive_mcts", "best_mcts"):
+            human_color = "black"
+            opponent_type = white_role
+        else:
+            raise ValueError("Replay log must contain one human role and one supported opponent role.")
+
+        game = cls(
+            human_color=human_color,
+            opponent_type=opponent_type,
+            simulations=simulations,
+            autoplay=False,
+            mode="replay_experiment",
+            replay_source=replay_source,
+            replay_until_ply=replay_until_ply,
+        )
+
+        for move_info in moves[:replay_until_ply]:
+            game.push_replayed_move(move_info)
+            if (
+                game.adaptive_player is not None
+                and move_info.get("role") == "human"
+                and move_info.get("move_error") is not None
+            ):
+                game.adaptive_player.player_model.update(move_info["move_error"])
+
+        game.replay_start_fen = game.board.fen()
+        if game.current_role() != "human":
+            raise ValueError("Replay point must end on the human player's turn.")
+
+        return game
 
     def current_color(self):
         return "white" if self.board.turn == chess.WHITE else "black"
@@ -174,6 +236,33 @@ class WebChessGame:
         self.move_history.append(move_info)
         self.phase_data[phase].append(move_info)
 
+    def push_replayed_move(self, move_info):
+        try:
+            move = chess.Move.from_uci(move_info["move"])
+        except (KeyError, ValueError) as error:
+            raise ValueError("Replay log contains an invalid move.") from error
+
+        if move not in self.board.legal_moves:
+            raise ValueError("Replay log contains a move that is illegal in sequence.")
+
+        phase = move_info.get("phase", self.phase_for_current_move())
+        replayed_move_info = {
+            "color": move_info.get("color", self.current_color()),
+            "role": move_info.get("role", self.current_role()),
+            "agent_type": move_info.get("agent_type", "Unknown"),
+            "move": move,
+            "phase": phase,
+            "move_values": self.deserialize_move_values(move_info.get("move_values")),
+            "move_error": move_info.get("move_error"),
+        }
+        for field in adaptive_log_fields:
+            if field in move_info:
+                replayed_move_info[field] = move_info[field]
+
+        self.board.push(move)
+        self.move_history.append(replayed_move_info)
+        self.phase_data.setdefault(phase, []).append(replayed_move_info)
+
     def status(self):
         if self.board.is_checkmate():
             return "checkmate"
@@ -246,9 +335,23 @@ class WebChessGame:
             for move, value, visits in move_values
         ]
 
+    def deserialize_move_values(self, move_values):
+        if move_values is None:
+            return None
+        deserialized_values = []
+        for move_value in move_values:
+            if isinstance(move_value, dict):
+                move = move_value["move"]
+                value = move_value["value"]
+                visits = move_value["visits"]
+            else:
+                move, value, visits = move_value
+            deserialized_values.append((chess.Move.from_uci(move), value, visits))
+        return deserialized_values
+
     def log_data(self):
         serialized_moves = [self.serialize_move_info(move) for move in self.move_history]
-        return {
+        data = {
             "result": self.board.result(claim_draw=True) if self.board.is_game_over(claim_draw=True) else None,
             "num_moves": len(serialized_moves),
             "white_role": self.white_role,
@@ -259,6 +362,14 @@ class WebChessGame:
                 for phase, moves in self.phase_data.items()
             },
         }
+        if self.mode != "normal":
+            data.update({
+                "mode": self.mode,
+                "replay_source": self.replay_source,
+                "replay_until_ply": self.replay_until_ply,
+                "replay_start_fen": self.replay_start_fen,
+            })
+        return data
 
     def save_log(self, logs_dir="logs"):
         os.makedirs(logs_dir, exist_ok=True)

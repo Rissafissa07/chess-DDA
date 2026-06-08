@@ -28,6 +28,18 @@
           <button id="new-game">New game</button>
           <button id="save-log">Save log</button>
         </div>
+        <div class="replay-mode">
+          <h2>Replay experiment</h2>
+          <div class="row">
+            <label for="replay-log-file">Saved JSON log</label>
+            <input id="replay-log-file" type="file" accept="application/json,.json">
+          </div>
+          <div class="row">
+            <label for="replay-until-ply">Replay until ply</label>
+            <input id="replay-until-ply" type="number" min="0" step="1" value="0">
+          </div>
+          <button id="start-replay">Start replay experiment</button>
+        </div>
         <p id="message" class="message">Start a new game.</p>
       </section>
 

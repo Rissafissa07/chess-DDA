@@ -26,9 +26,13 @@ const humanColorInput = document.querySelector("#human-color");
 const opponentTypeInput = document.querySelector("#opponent-type");
 const newGameButton = document.querySelector("#new-game");
 const saveLogButton = document.querySelector("#save-log");
+const replayLogFileInput = document.querySelector("#replay-log-file");
+const replayUntilPlyInput = document.querySelector("#replay-until-ply");
+const startReplayButton = document.querySelector("#start-replay");
 
 newGameButton.addEventListener("click", startNewGame);
 saveLogButton.addEventListener("click", saveLog);
+startReplayButton.addEventListener("click", startReplayExperiment);
 
 async function startNewGame() {
   const response = await fetch("/api/new-game", {
@@ -50,6 +54,33 @@ async function saveLog() {
     return;
   }
   showMessage(`Saved log to ${data.path}`);
+}
+
+async function startReplayExperiment() {
+  const file = replayLogFileInput.files[0];
+  if (!file) {
+    showMessage("Choose a saved JSON log.");
+    return;
+  }
+
+  let replayLog = null;
+  try {
+    replayLog = JSON.parse(await file.text());
+  } catch (error) {
+    showMessage("Could not read replay log JSON.");
+    return;
+  }
+
+  const response = await fetch("/api/start-replay", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      log: replayLog,
+      replay_source: file.name,
+      replay_until_ply: replayUntilPlyInput.value,
+    }),
+  });
+  await applyResponse(response, "Replay experiment started.");
 }
 
 async function makeMove(move) {
@@ -312,5 +343,6 @@ function setBusy(busy) {
 function updateControls() {
   newGameButton.disabled = isBusy;
   saveLogButton.disabled = isBusy;
+  startReplayButton.disabled = isBusy;
   boardElement.classList.toggle("busy", isBusy);
 }

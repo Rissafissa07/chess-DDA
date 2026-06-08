@@ -34,6 +34,34 @@ def new_game():
     return jsonify(current_game.state())
 
 
+@app.post("/api/start-replay")
+def start_replay():
+    global current_game
+
+    data = request.get_json(silent=True) or {}
+    log_data = data.get("log")
+    replay_source = data.get("replay_source")
+    try:
+        replay_until_ply = int(data.get("replay_until_ply"))
+    except (TypeError, ValueError):
+        return jsonify({"error": "Missing or invalid replay_until_ply."}), 400
+
+    if not isinstance(log_data, dict):
+        return jsonify({"error": "Missing or invalid replay log."}), 400
+
+    try:
+        current_game = WebChessGame.from_replay_log(
+            log_data=log_data,
+            replay_until_ply=replay_until_ply,
+            replay_source=replay_source,
+            simulations=DEFAULT_MCTS_SIMULATIONS,
+        )
+    except ValueError as error:
+        return jsonify({"error": str(error)}), 400
+
+    return jsonify(current_game.state())
+
+
 @app.get("/api/state")
 def state():
     if current_game is None:
