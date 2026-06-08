@@ -204,6 +204,51 @@ class MCTSPlayerStaticEvalTests(unittest.TestCase):
             self.player._passed_pawn_score(quiet_position, chess.WHITE),
         )
 
+    def test_enemy_queen_pressure_near_king_lowers_score(self):
+        safe_king = chess.Board("6k1/8/8/q7/8/8/8/6K1 w - - 0 1")
+        pressured_king = chess.Board("6k1/8/2q5/8/8/8/8/6K1 w - - 0 1")
+
+        self.assertLess(
+            self.player._king_pressure_score(pressured_king, chess.WHITE),
+            self.player._king_pressure_score(safe_king, chess.WHITE),
+        )
+
+    def test_reducing_king_pressure_improves_score(self):
+        pressured_king = chess.Board("6k1/8/2q5/8/8/8/8/6K1 w - - 0 1")
+        reduced_pressure = chess.Board("6k1/8/8/q7/8/8/8/6K1 w - - 0 1")
+
+        self.assertGreater(
+            self.player._king_pressure_score(reduced_pressure, chess.WHITE),
+            self.player._king_pressure_score(pressured_king, chess.WHITE),
+        )
+
+    def test_creating_pressure_around_enemy_king_improves_score(self):
+        distant_queen = chess.Board("6k1/8/8/8/Q7/8/8/6K1 w - - 0 1")
+        attacking_queen = chess.Board("6k1/8/8/8/8/2Q5/8/6K1 w - - 0 1")
+
+        self.assertGreater(
+            self.player._king_pressure_score(attacking_queen, chess.WHITE),
+            self.player._king_pressure_score(distant_queen, chess.WHITE),
+        )
+
+    def test_direct_checking_pressure_scores_above_distant_attack(self):
+        distant_queen = chess.Board("6k1/8/8/8/Q7/8/8/6K1 w - - 0 1")
+        checking_queen = chess.Board("6k1/8/8/8/8/1Q6/8/6K1 b - - 0 1")
+
+        self.assertGreater(
+            self.player._king_pressure_score(checking_queen, chess.WHITE),
+            self.player._king_pressure_score(distant_queen, chess.WHITE),
+        )
+
+    def test_random_piece_movement_far_from_king_is_not_rewarded(self):
+        rook_on_a3 = chess.Board("6k1/8/8/8/8/R7/8/6K1 w - - 0 1")
+        rook_on_b3 = chess.Board("6k1/8/8/8/8/1R6/8/6K1 w - - 0 1")
+
+        self.assertEqual(
+            self.player._king_pressure_score(rook_on_a3, chess.WHITE),
+            self.player._king_pressure_score(rook_on_b3, chess.WHITE),
+        )
+
     def test_centre_control_increases_feature_score(self):
         central_knight = chess.Board("7k/8/8/8/8/2N5/8/7K w - - 0 1")
         edge_knight = chess.Board("7k/8/8/8/8/N7/8/7K w - - 0 1")

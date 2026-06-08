@@ -103,6 +103,11 @@ class MCTSPlayer:
     passed_pawn_base_bonus = 0.08
     passed_pawn_advance_bonus = 0.04
     blocked_passed_pawn_multiplier = 0.45
+    king_pressure_attack_weight = 0.04
+    king_pressure_near_king_weight = 0.06
+    king_pressure_direct_check_weight = 0.12
+    own_king_pressure_penalty = 0.06
+    own_king_direct_check_penalty = 0.12
     attacked_piece_weight = 0.04
     undefended_attacked_piece_weight = 0.08
     own_attacked_piece_penalty = 0.04
@@ -283,6 +288,7 @@ class MCTSPlayer:
             + self._developed_minor_score(board, color)
             + self._piece_pressure_score(board, color)
             + self._passed_pawn_score(board, color)
+            + self._king_pressure_score(board, color)
             - self._pawn_structure_penalty(board, color)
         )
 
@@ -411,6 +417,67 @@ class MCTSPlayer:
                 return False
 
         return True
+
+    def _king_pressure_score(self, board, color):
+        attacking_score = self._pressure_against_king(
+            board,
+            king_color=not color,
+            attacking_color=color,
+            pressure_weight=self.king_pressure_attack_weight,
+            direct_check_weight=self.king_pressure_direct_check_weight,
+        )
+        defensive_penalty = self._pressure_against_king(
+            board,
+            king_color=color,
+            attacking_color=not color,
+            pressure_weight=self.own_king_pressure_penalty,
+            direct_check_weight=self.own_king_direct_check_penalty,
+        )
+        return attacking_score - defensive_penalty
+
+    def _pressure_against_king(
+        self,
+        board,
+        king_color,
+        attacking_color,
+        pressure_weight,
+        direct_check_weight,
+    ):
+        king_square = board.king(king_color)
+        if king_square is None:
+            return 0
+
+        pressure_piece_weights = {
+            chess.KNIGHT: 1.0,
+            chess.BISHOP: 1.0,
+            chess.ROOK: 1.2,
+            chess.QUEEN: 1.5,
+        }
+        king_zone = chess.SquareSet(chess.BB_KING_ATTACKS[king_square])
+        pressure_score = 0
+        unique_attackers = set()
+
+        for target_square in king_zone:
+            for attacker_square in board.attackers(attacking_color, target_square):
+                piece = board.piece_at(attacker_square)
+                if piece is None or piece.piece_type not in pressure_piece_weights:
+                    continue
+
+                unique_attackers.add(attacker_square)
+                pressure_score += pressure_weight * pressure_piece_weights[piece.piece_type]
+
+        for attacker_square in board.attackers(attacking_color, king_square):
+            piece = board.piece_at(attacker_square)
+            if piece is None or piece.piece_type not in pressure_piece_weights:
+                continue
+
+            unique_attackers.add(attacker_square)
+            pressure_score += direct_check_weight * pressure_piece_weights[piece.piece_type]
+
+        if len(unique_attackers) > 1:
+            pressure_score += self.king_pressure_near_king_weight * (len(unique_attackers) - 1)
+
+        return pressure_score
 
     def _piece_pressure_score(self, board, color):
         score = 0
