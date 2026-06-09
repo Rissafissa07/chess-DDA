@@ -15,3 +15,6 @@ models/
 
 # local web UI logs
 logs/*.json
+logs/ambro/
+logs/rissa/
+logs/ana/
