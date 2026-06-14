@@ -43,13 +43,23 @@ class WebChessGameTests(unittest.TestCase):
         }
 
     def test_adaptive_role_is_separate_from_color(self):
-        game = WebChessGame(human_color="white", opponent_type="adaptive_mcts", simulations=1)
+        game = WebChessGame(
+            human_color="white",
+            opponent_type="adaptive_mcts",
+            simulations=1,
+            use_stockfish_guidance=False,
+        )
 
         self.assertEqual(game.white_role, "human")
         self.assertEqual(game.black_role, "adaptive_mcts")
 
     def test_best_mcts_role_is_logged_separately_from_color(self):
-        game = WebChessGame(human_color="black", opponent_type="best_mcts", simulations=1)
+        game = WebChessGame(
+            human_color="black",
+            opponent_type="best_mcts",
+            simulations=1,
+            use_stockfish_guidance=False,
+        )
         first_move = game.log_data()["moves"][0]
 
         self.assertEqual(game.white_role, "best_mcts")
@@ -59,7 +69,12 @@ class WebChessGameTests(unittest.TestCase):
         self.assertEqual(first_move["agent_type"], "BestMCTSPlayer")
 
     def test_adaptive_move_log_includes_decision_fields(self):
-        game = WebChessGame(human_color="white", opponent_type="adaptive_mcts", simulations=1)
+        game = WebChessGame(
+            human_color="white",
+            opponent_type="adaptive_mcts",
+            simulations=1,
+            use_stockfish_guidance=False,
+        )
         move_values = [
             (chess.Move.from_uci("g8f6"), 1.00, 12),
             (chess.Move.from_uci("d7d5"), 0.92, 10),
@@ -97,7 +112,12 @@ class WebChessGameTests(unittest.TestCase):
         self.assertTrue(expected_fields.issubset(adaptive_move.keys()))
 
     def test_adaptive_move_log_records_error_rank_and_cap_counts(self):
-        game = WebChessGame(human_color="white", opponent_type="adaptive_mcts", simulations=1)
+        game = WebChessGame(
+            human_color="white",
+            opponent_type="adaptive_mcts",
+            simulations=1,
+            use_stockfish_guidance=False,
+        )
         move_values = [
             (chess.Move.from_uci("g8f6"), 1.00, 12),
             (chess.Move.from_uci("d7d5"), 0.92, 10),

@@ -6,7 +6,41 @@ import chess
 from agents import AdaptiveMCTSPlayer, BestMCTSPlayer, MCTSNode, MCTSPlayer
 
 
+class FakeEvaluator:
+    def __init__(self, value=0, values_by_fen=None):
+        self.value = value
+        self.values_by_fen = values_by_fen or {}
+        self.calls = []
+
+    def evaluate(self, board, root_player):
+        self.calls.append((board.fen(), root_player))
+        return self.values_by_fen.get(board.fen(), self.value)
+
+
 class BestMCTSPlayerTests(unittest.TestCase):
+    def test_best_mcts_uses_same_base_engine_settings_as_adaptive_mcts(self):
+        best_player = BestMCTSPlayer(simulations=123)
+        adaptive_player = AdaptiveMCTSPlayer(simulations=123)
+
+        self.assertIsInstance(adaptive_player.base_mcts, MCTSPlayer)
+        self.assertEqual(best_player.simulations, adaptive_player.base_mcts.simulations)
+        self.assertEqual(
+            best_player.root_static_eval_weight,
+            adaptive_player.base_mcts.root_static_eval_weight,
+        )
+        self.assertEqual(
+            best_player.rollout_depth,
+            adaptive_player.base_mcts.rollout_depth,
+        )
+        self.assertEqual(
+            best_player.progressive_bias_weight,
+            adaptive_player.base_mcts.progressive_bias_weight,
+        )
+        self.assertEqual(
+            best_player.stockfish_eval_weight,
+            adaptive_player.base_mcts.stockfish_eval_weight,
+        )
+
     def test_choose_move_returns_first_move_value(self):
         move_values = [
             (chess.Move.from_uci("e2e4"), 0.75, 12),
@@ -18,6 +52,186 @@ class BestMCTSPlayerTests(unittest.TestCase):
 
         self.assertEqual(chosen_move, move_values[0][0])
         self.assertIs(returned_move_values, move_values)
+
+
+class MCTSNodeProgressiveBiasTests(unittest.TestCase):
+    def test_progressive_bias_can_prioritize_promising_move_with_equal_visits(self):
+        parent = MCTSNode(chess.Board())
+        parent.visits = 20
+        high_reward_child = MCTSNode(chess.Board(), parent=parent, prior_score=0)
+        prior_child = MCTSNode(chess.Board(), parent=parent, prior_score=1)
+        high_reward_child.visits = 4
+        high_reward_child.wins = 2.0
+        prior_child.visits = 4
+        prior_child.wins = 1.6
+
+        self.assertGreater(
+            high_reward_child.uct_score(prior_weight=0),
+            prior_child.uct_score(prior_weight=0),
+        )
+        self.assertGreater(
+            prior_child.uct_score(prior_weight=1),
+            high_reward_child.uct_score(prior_weight=1),
+        )
+
+    def test_progressive_bias_decays_as_node_visits_increase(self):
+        parent = MCTSNode(chess.Board())
+        parent.visits = 20
+        lightly_visited_child = MCTSNode(chess.Board(), parent=parent, prior_score=1)
+        heavily_visited_child = MCTSNode(chess.Board(), parent=parent, prior_score=1)
+        lightly_visited_child.visits = 1
+        lightly_visited_child.wins = 0.5
+        heavily_visited_child.visits = 9
+        heavily_visited_child.wins = 4.5
+
+        light_bonus = (
+            lightly_visited_child.uct_score(prior_weight=1)
+            - lightly_visited_child.uct_score(prior_weight=0)
+        )
+        heavy_bonus = (
+            heavily_visited_child.uct_score(prior_weight=1)
+            - heavily_visited_child.uct_score(prior_weight=0)
+        )
+
+        self.assertGreater(light_bonus, heavy_bonus)
+
+
+class MCTSPlayerStockfishGuidanceTests(unittest.TestCase):
+    def test_stockfish_eval_is_not_called_when_weight_is_zero(self):
+        evaluator = FakeEvaluator(value=1)
+        player = MCTSPlayer(
+            simulations=1,
+            stockfish_evaluator=evaluator,
+            stockfish_eval_weight=0,
+        )
+
+        self.assertEqual(player._stockfish_eval(chess.Board(), chess.WHITE), 0)
+        self.assertEqual(evaluator.calls, [])
+
+    def test_stockfish_eval_uses_evaluator_when_weight_is_enabled(self):
+        evaluator = FakeEvaluator(value=0.75)
+        player = MCTSPlayer(
+            simulations=1,
+            stockfish_evaluator=evaluator,
+            stockfish_eval_weight=0.3,
+        )
+
+        self.assertEqual(player._stockfish_eval(chess.Board(), chess.WHITE), 0.75)
+        self.assertEqual(len(evaluator.calls), 1)
+
+    def test_node_prior_is_not_called_when_progressive_bias_is_zero(self):
+        evaluator = FakeEvaluator(value=0.5)
+        player = MCTSPlayer(
+            simulations=1,
+            stockfish_evaluator=evaluator,
+            progressive_bias_weight=0,
+        )
+        board = chess.Board()
+        move = chess.Move.from_uci("e2e4")
+        child_board = board.copy()
+        child_board.push(move)
+
+        self.assertEqual(
+            player._node_prior_score(board, move, child_board, chess.WHITE),
+            0,
+        )
+        self.assertEqual(evaluator.calls, [])
+
+    def test_node_prior_uses_evaluator_when_progressive_bias_is_enabled(self):
+        evaluator = FakeEvaluator(value=0.5)
+        player = MCTSPlayer(
+            simulations=1,
+            stockfish_evaluator=evaluator,
+            progressive_bias_weight=0.4,
+        )
+        board = chess.Board()
+        move = chess.Move.from_uci("e2e4")
+        child_board = board.copy()
+        child_board.push(move)
+
+        self.assertEqual(
+            player._node_prior_score(board, move, child_board, chess.WHITE),
+            0.5,
+        )
+        self.assertEqual(len(evaluator.calls), 1)
+
+    def test_stockfish_prior_is_root_only_by_default(self):
+        evaluator = FakeEvaluator(value=0.5)
+        player = MCTSPlayer(
+            simulations=1,
+            stockfish_evaluator=evaluator,
+            progressive_bias_weight=0.4,
+        )
+        root_board = chess.Board()
+        parent_board = root_board.copy()
+        parent_board.push_uci("e2e4")
+        move = chess.Move.from_uci("e7e5")
+        child_board = parent_board.copy()
+        child_board.push(move)
+
+        self.assertEqual(
+            player._node_prior_score(
+                parent_board,
+                move,
+                child_board,
+                chess.WHITE,
+                root_board.ply(),
+            ),
+            0,
+        )
+        self.assertEqual(evaluator.calls, [])
+
+    def test_stockfish_eval_can_change_root_move_ranking_when_enabled(self):
+        board = chess.Board()
+        e4 = chess.Move.from_uci("e2e4")
+        d4 = chess.Move.from_uci("d2d4")
+        e4_board = board.copy()
+        e4_board.push(e4)
+        d4_board = board.copy()
+        d4_board.push(d4)
+        evaluator = FakeEvaluator(
+            values_by_fen={
+                e4_board.fen(): -0.5,
+                d4_board.fen(): 0.5,
+            },
+        )
+        player = MCTSPlayer(
+            simulations=1,
+            stockfish_evaluator=evaluator,
+            stockfish_eval_weight=1,
+        )
+        player._bad_loss_penalty = lambda current_board, move: 0
+        player._opening_bonus = lambda current_board, move: 0
+
+        def add_tied_children(root):
+            for move in (e4, d4):
+                child_board = root.board.copy()
+                child_board.push(move)
+                child = MCTSNode(child_board, parent=root, move=move)
+                child.visits = 1
+                child.wins = 0
+                root.children.append(child)
+
+        player.simulate = add_tied_children
+
+        best_move, move_values = player.choose_move(board)
+
+        self.assertEqual(best_move, d4)
+        self.assertEqual(move_values[0][0], d4)
+        self.assertEqual(len(evaluator.calls), 2)
+
+    def test_adaptive_mcts_passes_stockfish_settings_to_base_mcts(self):
+        evaluator = FakeEvaluator(value=0.5)
+        player = AdaptiveMCTSPlayer(
+            simulations=10,
+            stockfish_evaluator=evaluator,
+            progressive_bias_weight=0.4,
+            stockfish_eval_weight=0.3,
+        )
+
+        self.assertIs(player.base_mcts.stockfish_evaluator, evaluator)
+        self.assertEqual(player.base_mcts.progressive_bias_weight, 0.4)
+        self.assertEqual(player.base_mcts.stockfish_eval_weight, 0.3)
 
 
 class MCTSPlayerMaterialRiskTests(unittest.TestCase):
@@ -404,8 +618,11 @@ class AdaptiveMCTSPlayerTests(unittest.TestCase):
             (chess.Move.from_uci("e2e3"), 0.50, 7),
         ]
 
-    def test_default_top_k_is_five(self):
-        self.assertEqual(AdaptiveMCTSPlayer().top_k, 5)
+    def test_default_top_k_is_fifteen(self):
+        player = AdaptiveMCTSPlayer()
+
+        self.assertEqual(player.top_k, 15)
+        self.assertEqual(player.max_error_cap, 0.45)
 
     def test_one_early_blunder_does_not_loosen_error_cap_too_much(self):
         player = AdaptiveMCTSPlayer()
@@ -433,7 +650,8 @@ class AdaptiveMCTSPlayerTests(unittest.TestCase):
         for error in (0.0, 0.60, 0.0, 0.60):
             player.player_model.update(error)
 
-        self.assertEqual(player._dynamic_error_cap(), player.max_error_cap)
+        self.assertGreater(player._dynamic_error_cap(), player.min_error_cap)
+        self.assertLessEqual(player._dynamic_error_cap(), player.max_error_cap)
 
     def test_opening_board_keeps_dynamic_error_cap_strict_despite_high_errors(self):
         player = AdaptiveMCTSPlayer()
