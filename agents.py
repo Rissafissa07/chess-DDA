@@ -66,21 +66,23 @@ def find_move_error(chosen_move, move_values):
 
 class MCTSNode:
     # Represents one searched position in the MCTS tree.
-    def __init__(self, board, parent=None, move=None):
+    def __init__(self, board, parent=None, move=None, prior_score=0):
         self.board = board
         self.parent = parent
         self.move = move
+        self.prior_score = prior_score
         self.children = []
         self.visits = 0
         self.wins = 0
 
-    def uct_score(self, c=1.4):
+    def uct_score(self, c=1.4, prior_weight=0):
         # Balances explored strong nodes with less explored nodes.
         if self.visits == 0: 
             return float("inf")
-        return (self.wins / self.visits) + c * math.sqrt(
-            math.log(self.parent.visits) / self.visits
-        )
+        exploitation = self.wins / self.visits
+        exploration = c * math.sqrt(math.log(self.parent.visits) / self.visits)
+        progressive_bias = prior_weight * self.prior_score / (self.visits + 1)
+        return exploitation + exploration + progressive_bias
 
 
 class MCTSPlayer:
@@ -136,9 +138,20 @@ class MCTSPlayer:
     repeated_piece_move_penalty = 0.06 # Repeated opening moves
     rollout_depth = 30 # Rollout cutoff depth
 
-    def __init__(self, simulations=200):
+    def __init__(
+        self,
+        simulations=200,
+        progressive_bias_weight=0,
+        stockfish_evaluator=None,
+        stockfish_eval_weight=0,
+        stockfish_prior_root_only=True,
+    ):
         # Sets the search budget used for each move choice.
         self.simulations = simulations
+        self.progressive_bias_weight = progressive_bias_weight
+        self.stockfish_evaluator = stockfish_evaluator
+        self.stockfish_eval_weight = stockfish_eval_weight
+        self.stockfish_prior_root_only = stockfish_prior_root_only
 
     def choose_move(self, board):
         # Builds a search tree from the current board position.
@@ -170,9 +183,11 @@ class MCTSPlayer:
                 candidate_board = board.copy()
                 candidate_board.push(child.move)
                 static_value = self._static_eval(candidate_board, board.turn)
+                stockfish_value = self._stockfish_eval(candidate_board, board.turn)
                 value = (
                     mcts_value
                     + self.root_static_eval_weight * static_value
+                    + self.stockfish_eval_weight * stockfish_value
                     - bad_loss_penalty
                     + opening_bonus
                 )
@@ -570,20 +585,58 @@ class MCTSPlayer:
 
         return score
 
+    def _stockfish_eval(self, board, root_player):
+        # Adds optional Stockfish guidance to final root move ranking.
+        if self.stockfish_evaluator is None or self.stockfish_eval_weight == 0:
+            return 0
+
+        return self.stockfish_evaluator.evaluate(board, root_player)
+
+    def _node_prior_score(
+        self,
+        parent_board,
+        move,
+        child_board,
+        root_player,
+        root_ply=None,
+    ):
+        # Adds optional Stockfish priors for progressive-bias UCT selection.
+        if self.stockfish_evaluator is None or self.progressive_bias_weight == 0:
+            return 0
+        if self.stockfish_prior_root_only and root_ply is not None:
+            if parent_board.ply() != root_ply:
+                return 0
+
+        return self.stockfish_evaluator.evaluate(child_board, root_player)
+
     def simulate(self, node):
         # Performs one full MCTS iteration.
         current = node
 
         # Selection: follows the highest UCT child.
         while current.children:
-            current = max(current.children, key=lambda c: c.uct_score())
+            current = max(
+                current.children,
+                key=lambda c: c.uct_score(prior_weight=self.progressive_bias_weight),
+            )
 
         # Expansion: adds all legal child positions once.
         if not current.board.is_game_over():
             for move in current.board.legal_moves:
                 new_board = current.board.copy()
                 new_board.push(move)
-                child = MCTSNode(new_board, parent=current, move=move)
+                child = MCTSNode(
+                    new_board,
+                    parent=current,
+                    move=move,
+                    prior_score=self._node_prior_score(
+                        current.board,
+                        move,
+                        new_board,
+                        node.board.turn,
+                        node.board.ply(),
+                    ),
+                )
                 current.children.append(child)
 
             current = random.choice(current.children)
@@ -640,17 +693,31 @@ class AdaptiveMCTSPlayer:
     # Keeps safety and adaptation limits configurable.
     severe_material_risk_threshold = 0.5
     min_error_cap = 0.12
-    max_error_cap = 0.30
+    max_error_cap = 0.45
     consistency_margin_weight = 0.5
     max_consistency_margin = 0.12
     minimum_model_observations = 4
     model_error_window = 6
 
-    def __init__(self, simulations=200, top_k=5):
+    def __init__(
+        self,
+        simulations=200,
+        top_k=15,
+        progressive_bias_weight=0,
+        stockfish_evaluator=None,
+        stockfish_eval_weight=0,
+        stockfish_prior_root_only=True,
+    ):
         # Keeps adaptive selection separate from base MCTS ranking.
         self.simulations = simulations
         self.top_k = top_k
-        self.base_mcts = MCTSPlayer(simulations=simulations)
+        self.base_mcts = MCTSPlayer(
+            simulations=simulations,
+            progressive_bias_weight=progressive_bias_weight,
+            stockfish_evaluator=stockfish_evaluator,
+            stockfish_eval_weight=stockfish_eval_weight,
+            stockfish_prior_root_only=stockfish_prior_root_only,
+        )
         self.player_model = PlayerModel() 
         self.last_decision_info = None
 
