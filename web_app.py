@@ -23,6 +23,8 @@ def new_game():
     simulations = DEFAULT_MCTS_SIMULATIONS
 
     try:
+        if current_game is not None:
+            current_game.close()
         current_game = WebChessGame(
             human_color=human_color,
             opponent_type=opponent_type,
@@ -50,6 +52,8 @@ def start_replay():
         return jsonify({"error": "Missing or invalid replay log."}), 400
 
     try:
+        if current_game is not None:
+            current_game.close()
         current_game = WebChessGame.from_replay_log(
             log_data=log_data,
             replay_until_ply=replay_until_ply,
@@ -97,4 +101,4 @@ def save_log():
 
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(host="0.0.0.0", port=5001,debug=True)

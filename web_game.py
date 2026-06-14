@@ -5,6 +5,12 @@ from datetime import datetime
 import chess
 
 from agents import AdaptiveMCTSPlayer, BestMCTSPlayer, find_move_error
+from stockfish_eval import StockfishEvaluator
+
+
+DEFAULT_STOCKFISH_DEPTH = 4
+DEFAULT_PROGRESSIVE_BIAS_WEIGHT = 0.35
+DEFAULT_STOCKFISH_EVAL_WEIGHT = 0.25
 
 
 adaptive_log_fields = (
@@ -35,6 +41,10 @@ class WebChessGame:
         replay_source=None,
         replay_until_ply=None,
         replay_start_fen=None,
+        use_stockfish_guidance=True,
+        stockfish_depth=DEFAULT_STOCKFISH_DEPTH,
+        progressive_bias_weight=DEFAULT_PROGRESSIVE_BIAS_WEIGHT,
+        stockfish_eval_weight=DEFAULT_STOCKFISH_EVAL_WEIGHT,
     ):
         if human_color not in ("white", "black"):
             raise ValueError("human_color must be 'white' or 'black'")
@@ -43,12 +53,27 @@ class WebChessGame:
 
         self.board = chess.Board()
         self.opponent_role = opponent_type
+        self.stockfish_evaluator = (
+            StockfishEvaluator(depth=stockfish_depth)
+            if use_stockfish_guidance
+            else None
+        )
         if opponent_type == "adaptive_mcts":
-            self.opponent_player = AdaptiveMCTSPlayer(simulations=simulations)
+            self.opponent_player = AdaptiveMCTSPlayer(
+                simulations=simulations,
+                progressive_bias_weight=progressive_bias_weight,
+                stockfish_evaluator=self.stockfish_evaluator,
+                stockfish_eval_weight=stockfish_eval_weight,
+            )
             self.adaptive_player = self.opponent_player
             self.evaluation_mcts = self.adaptive_player.base_mcts
         else:
-            self.opponent_player = BestMCTSPlayer(simulations=simulations)
+            self.opponent_player = BestMCTSPlayer(
+                simulations=simulations,
+                progressive_bias_weight=progressive_bias_weight,
+                stockfish_evaluator=self.stockfish_evaluator,
+                stockfish_eval_weight=stockfish_eval_weight,
+            )
             self.adaptive_player = None
             self.evaluation_mcts = self.opponent_player
 
@@ -99,6 +124,7 @@ class WebChessGame:
             mode="replay_experiment",
             replay_source=replay_source,
             replay_until_ply=replay_until_ply,
+            use_stockfish_guidance=False,
         )
 
         for move_info in moves[:replay_until_ply]:
@@ -191,6 +217,11 @@ class WebChessGame:
     def play_adaptive_move(self):
         if self.opponent_role == "adaptive_mcts":
             self.play_opponent_move()
+
+    def close(self):
+        if self.stockfish_evaluator is not None:
+            self.stockfish_evaluator.close()
+            self.stockfish_evaluator = None
 
     def parse_legal_move(self, move_uci):
         candidate_uci = move_uci.strip().lower()
