@@ -111,3 +111,48 @@ impl<G: Game> MCTS<G> {
             .map(|&best_child_idx| self.nodes[best_child_idx].mv.unwrap())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::games::tictactoe::TicTacToe;
+
+    const C: f32 = std::f32::consts::SQRT_2;
+
+    #[test]
+    fn basic() {
+        let mut mcts = MCTS::new(100, C);
+        let game = TicTacToe::new();
+        let best_move = mcts.best_move(&game);
+        assert!(best_move.is_some());
+    }
+
+    #[test]
+    fn takes_immediate_win() {
+        let mut game = TicTacToe::new();
+
+        game.make_move(0); // p1
+        game.make_move(3); // p2
+        game.make_move(1); // etc...
+        game.make_move(4);
+
+        let mut mcts = MCTS::new(300, C);
+        let chosen_move = mcts.best_move(&game);
+
+        assert_eq!(chosen_move, Some(2));
+    }
+
+    #[test]
+    fn blocks_opponent_win() {
+        let mut game = TicTacToe::new();
+
+        game.make_move(0);
+        game.make_move(4);
+        game.make_move(1);
+
+        let mut mcts = MCTS::new(500, C);
+        let chosen_move = mcts.best_move(&game);
+
+        assert_eq!(chosen_move, Some(2));
+    }
+}
