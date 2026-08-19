@@ -1,6 +1,7 @@
-use crate::core::game::Game;
-use crate::engine::mcts::MCTS;
-use crate::engine::student_profile::StudentProfile;
+use crate::game::player::agent::Agent;
+use crate::game::player::ai::adaptive::student_profile::StudentProfile;
+use crate::game::player::ai::core::mcts::MCTS;
+use crate::game::Game;
 
 pub struct AdaptiveSensei<G: Game> {
     pub mcts: MCTS<G>,
@@ -75,5 +76,15 @@ impl<G: Game> AdaptiveSensei<G> {
 
     fn error_rate(visits: usize, max_visits: usize) -> f32 {
         1.0 - (visits as f32 / max_visits as f32)
+    }
+}
+
+impl<G: Game> Agent<G> for AdaptiveSensei<G> {
+    fn select_move(&mut self, game: &G) -> Option<G::Move> {
+        self.adaptive_move(game)
+    }
+
+    fn name(&self) -> &str {
+        "Adaptive Sensei"
     }
 }

@@ -1,6 +1,6 @@
 use std::fmt::Debug;
 
-use crate::core::player::Player;
+use crate::game::player::Player;
 
 pub trait Game: Clone + Send + Sync {
     type Move: Copy + PartialEq + Debug;

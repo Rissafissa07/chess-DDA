@@ -1,5 +1,5 @@
-use crate::core::game::Game;
-use crate::core::player::Player;
+use crate::game::Game;
+use crate::game::player::Player;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TicTacToe {

@@ -1,5 +1,6 @@
-use crate::core::game::Game;
-use crate::engine::node::Node;
+use crate::game::player::agent::Agent;
+use crate::game::player::ai::core::node::Node;
+use crate::game::Game;
 
 use rand::seq::SliceRandom;
 
@@ -140,6 +141,16 @@ impl<G: Game> MCTS<G> {
                 (mv, win_rate, node.visits)
             })
             .collect()
+    }
+}
+
+impl<G: Game> Agent<G> for MCTS<G> {
+    fn select_move(&mut self, game: &G) -> Option<G::Move> {
+        self.best_move(game)
+    }
+
+    fn name(&self) -> &str {
+        "MCTS"
     }
 }
 

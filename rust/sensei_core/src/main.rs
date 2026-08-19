@@ -1,15 +1,14 @@
-use sensei_core::core::game::Game;
-use sensei_core::core::player::Player;
+use sensei_core::game::Game;
+use sensei_core::game::player::Player;
+use sensei_core::game::player::ai::adaptive::AdaptiveSensei;
 use sensei_core::games::tictactoe::TicTacToe;
-
-use sensei_core::engine::adaptive::AdaptiveSensei;
 
 use std::io::{self, Write};
 
 fn main() {
-    println!("==============================");
-    println!("           TIC-TAC-TOE        ");
-    println!("==============================");
+    println!("=============================");
+    println!("          TIC-TAC-TOE        ");
+    println!("=============================");
 
     let mut game = TicTacToe::new();
     let mut ai = AdaptiveSensei::new(1000, std::f32::consts::SQRT_2);
