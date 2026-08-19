@@ -1,6 +1,6 @@
-use std::io::{self, Write};
 use crate::game::player::agent::Agent;
 use crate::game::Game;
+use std::io::{self, Write};
 
 pub struct HumanAgent {
     pub name: String,
@@ -20,6 +20,9 @@ impl<G: Game<Move = usize>> Agent<G> for HumanAgent {
         if legal_moves.is_empty() {
             return None;
         }
+
+        // render the board visually for the human player
+        println!("{}", game);
 
         loop {
             print!("{}: enter your move {:?}: ", self.name, legal_moves);

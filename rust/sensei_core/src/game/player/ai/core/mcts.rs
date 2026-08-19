@@ -150,7 +150,7 @@ impl<G: Game> Agent<G> for MCTS<G> {
     }
 
     fn name(&self) -> &str {
-        "MCTS"
+        "Killer"
     }
 }
 
@@ -200,7 +200,7 @@ mod tests {
     }
 
     #[test]
-    fn mcts_crushes_random() {
+    fn crushes_random() {
         use crate::game::player::ai::random::RandomAgent;
         use crate::game::r#match::Match;
         use crate::game::Status;
@@ -223,7 +223,6 @@ mod tests {
             }
         }
 
-        // MCTS playing as Player1 against Random should win or draw virtually every game
         assert!(mcts_wins + draws >= 19);
     }
 }

@@ -6,6 +6,7 @@ use crate::game::Game;
 pub struct AdaptiveSensei<G: Game> {
     pub mcts: MCTS<G>,
     pub student: StudentProfile,
+    pub last_board: Option<G>,
 }
 
 impl<G: Game> AdaptiveSensei<G> {
@@ -13,6 +14,7 @@ impl<G: Game> AdaptiveSensei<G> {
         Self {
             mcts: MCTS::new(simulations, c),
             student: StudentProfile::new(),
+            last_board: None,
         }
     }
 
@@ -81,10 +83,28 @@ impl<G: Game> AdaptiveSensei<G> {
 
 impl<G: Game> Agent<G> for AdaptiveSensei<G> {
     fn select_move(&mut self, game: &G) -> Option<G::Move> {
-        self.adaptive_move(game)
+        if let Some(prev_game) = self.last_board.take() {
+            let student_move = prev_game.legal_moves().into_iter().find(|&mv| {
+                let mut test_game = prev_game.clone();
+                test_game.make_move(mv);
+                test_game == *game
+            });
+
+            if let Some(mv) = student_move {
+                self.observe_student_move(&prev_game, mv);
+            }
+        }
+
+        let chosen_move = self.adaptive_move(game)?;
+
+        let mut next_game = game.clone();
+        next_game.make_move(chosen_move);
+        self.last_board = Some(next_game);
+
+        Some(chosen_move)
     }
 
     fn name(&self) -> &str {
-        "Adaptive Sensei"
+        "Sensei"
     }
 }

@@ -1,3 +1,5 @@
+use std::fmt;
+
 use crate::game::player::Player;
 use crate::game::Game;
 use crate::game::Status;
@@ -40,27 +42,6 @@ impl TicTacToe {
 
     pub fn is_full(&self) -> bool {
         self.board.iter().all(|square| square.is_some())
-    }
-
-    pub fn display_board(&self) {
-        println!();
-        for row in 0..3 {
-            let cells: Vec<String> = (0..3)
-                .map(|col| {
-                    let idx = row * 3 + col;
-                    match self.board[idx] {
-                        Some(Player::Player1) => "X".to_string(),
-                        Some(Player::Player2) => "O".to_string(),
-                        None => idx.to_string(),
-                    }
-                })
-                .collect();
-            println!(" {} | {} | {} ", cells[0], cells[1], cells[2]);
-            if row < 2 {
-                println!("---+---+---");
-            }
-        }
-        println!();
     }
 }
 
@@ -106,6 +87,29 @@ impl Game for TicTacToe {
         } else {
             Status::Ongoing
         }
+    }
+}
+
+impl fmt::Display for TicTacToe {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f)?;
+        for row in 0..3 {
+            let cells: Vec<String> = (0..3)
+                .map(|col| {
+                    let idx = row * 3 + col;
+                    match self.board[idx] {
+                        Some(Player::Player1) => "X".to_string(),
+                        Some(Player::Player2) => "O".to_string(),
+                        None => idx.to_string(),
+                    }
+                })
+                .collect();
+            writeln!(f, " {} | {} | {} ", cells[0], cells[1], cells[2])?;
+            if row < 2 {
+                writeln!(f, "---+---+---")?;
+            }
+        }
+        Ok(())
     }
 }
 
