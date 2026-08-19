@@ -1,15 +1,29 @@
+use std::collections::VecDeque;
+
 #[derive(Debug, Clone)]
 pub struct StudentProfile {
-    pub errors: Vec<f32>,
+    pub errors: VecDeque<f32>,
+    max_history: usize,
 }
 
 impl StudentProfile {
     pub fn new() -> Self {
-        Self { errors: Vec::new() }
+        Self::with_capacity(20)
+    }
+
+    pub fn with_capacity(capacity: usize) -> Self {
+        Self {
+            errors: VecDeque::with_capacity(capacity),
+            max_history: capacity,
+        }
     }
 
     pub fn update(&mut self, error: f32) {
-        self.errors.push(error);
+        if self.errors.len() >= self.max_history {
+            self.errors.pop_front();
+        }
+
+        self.errors.push_back(error);
     }
 
     pub fn average_error(&self) -> f32 {
@@ -37,6 +51,8 @@ impl StudentProfile {
 mod tests {
     use super::*;
 
+    const MAX_ERROR_DIFF: f32 = 1e-6;
+
     #[test]
     fn correct_average_error() {
         let mut student = StudentProfile::new();
@@ -45,6 +61,20 @@ mod tests {
         student.update(0.1);
 
         let diff = (student.average_error() - 0.45).abs();
-        assert!(diff < 1e-5); // put into error reate variable
+        assert!(diff < MAX_ERROR_DIFF);
+    }
+
+    #[test]
+    fn rolling_window_eviction() {
+        let mut student = StudentProfile::with_capacity(3);
+
+        student.update(1.0);
+        student.update(0.2);
+        student.update(0.4);
+        student.update(0.6);
+        assert_eq!(student.errors.len(), 3);
+
+        let diff = (student.average_error() - 0.4).abs();
+        assert!(diff < MAX_ERROR_DIFF);
     }
 }

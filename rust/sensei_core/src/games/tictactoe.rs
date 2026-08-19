@@ -54,18 +54,16 @@ impl Default for TicTacToe {
 impl Game for TicTacToe {
     type Move = usize;
 
-    fn legal_moves(&self) -> Vec<Self::Move> {
+    fn fill_legal_moves(&self, buffer: &mut Vec<Self::Move>) {
         if self.status().is_terminal() {
-            return Vec::new();
+            return;
         }
 
-        let mut moves = Vec::new();
         for (idx, square) in self.board.iter().enumerate() {
             if square.is_none() {
-                moves.push(idx);
+                buffer.push(idx);
             }
         }
-        moves
     }
 
     fn make_move(&mut self, mv: Self::Move) {

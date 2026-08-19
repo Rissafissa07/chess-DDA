@@ -2,12 +2,15 @@ use crate::game::player::agent::Agent;
 use crate::game::player::ai::core::node::Node;
 use crate::game::Game;
 
+use rand::rngs::SmallRng;
 use rand::seq::SliceRandom;
+use rand::SeedableRng;
 
 pub struct MCTS<G: Game> {
     pub simulations: usize,
     pub c: f32, // exploration constant (typically sqrt(2) ≈ 1.414)
     pub nodes: Vec<Node<G::Move>>,
+    rng: SmallRng,
 }
 
 impl<G: Game> MCTS<G> {
@@ -16,6 +19,7 @@ impl<G: Game> MCTS<G> {
             simulations,
             c,
             nodes: Vec::new(),
+            rng: SmallRng::from_entropy(),
         }
     }
 
@@ -23,6 +27,7 @@ impl<G: Game> MCTS<G> {
     pub fn simulate(&mut self, root_game: &G) {
         let mut curr_idx = 0;
         let mut sim_game = root_game.clone();
+        let mut move_buffer = Vec::with_capacity(32);
 
         // 1. selection
         while !self.nodes[curr_idx].children.is_empty() && sim_game.status().is_ongoing() {
@@ -43,10 +48,11 @@ impl<G: Game> MCTS<G> {
 
         // 2. expansion
         if sim_game.status().is_ongoing() {
-            let legal_moves = sim_game.legal_moves();
+            move_buffer.clear();
+            sim_game.fill_legal_moves(&mut move_buffer);
 
-            for mv in &legal_moves {
-                let child_node = Node::new(Some(*mv), Some(curr_idx));
+            for &mv in &move_buffer {
+                let child_node = Node::new(Some(mv), Some(curr_idx));
                 let child_idx = self.nodes.len();
 
                 self.nodes.push(child_node);
@@ -62,12 +68,12 @@ impl<G: Game> MCTS<G> {
 
         // 3. rollout
         let mut rollout_game = sim_game;
-        let mut rng = rand::thread_rng();
 
         while rollout_game.status().is_ongoing() {
-            let moves = rollout_game.legal_moves();
+            move_buffer.clear();
+            rollout_game.fill_legal_moves(&mut move_buffer);
 
-            if let Some(&random_mv) = moves.choose(&mut rng) {
+            if let Some(&random_mv) = move_buffer.choose(&mut self.rng) {
                 rollout_game.make_move(random_mv);
             } else {
                 break;
@@ -98,6 +104,7 @@ impl<G: Game> MCTS<G> {
         }
 
         self.nodes.clear();
+        self.nodes.reserve(self.simulations * 2);
         self.nodes.push(Node::new(None, None));
 
         for _ in 0..self.simulations {
@@ -120,6 +127,7 @@ impl<G: Game> MCTS<G> {
         }
 
         self.nodes.clear();
+        self.nodes.reserve(self.simulations * 2);
         self.nodes.push(Node::new(None, None));
 
         for _ in 0..self.simulations {
