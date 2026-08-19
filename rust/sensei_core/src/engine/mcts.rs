@@ -110,6 +110,37 @@ impl<G: Game> MCTS<G> {
             .max_by_key(|&&child_idx| self.nodes[child_idx].visits)
             .map(|&best_child_idx| self.nodes[best_child_idx].mv.unwrap())
     }
+
+    pub fn move_evaluations(&mut self, root_game: &G) -> Vec<(G::Move, f32, usize)> {
+        let legal_moves = root_game.legal_moves();
+
+        if legal_moves.is_empty() {
+            return Vec::new();
+        }
+
+        self.nodes.clear();
+        self.nodes.push(Node::new(None, None));
+
+        for _ in 0..self.simulations {
+            self.simulate(root_game);
+        }
+
+        let root = &self.nodes[0];
+
+        root.children
+            .iter()
+            .map(|&child_idx| {
+                let node = &self.nodes[child_idx];
+                let mv = node.mv.unwrap();
+                let win_rate = if node.visits > 0 {
+                    node.total_reward / (node.visits as f32)
+                } else {
+                    0.0
+                };
+                (mv, win_rate, node.visits)
+            })
+            .collect()
+    }
 }
 
 #[cfg(test)]

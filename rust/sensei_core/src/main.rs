@@ -2,7 +2,7 @@ use sensei_core::core::game::Game;
 use sensei_core::core::player::Player;
 use sensei_core::games::tictactoe::TicTacToe;
 
-use sensei_core::engine::mcts::MCTS;
+use sensei_core::engine::adaptive::AdaptiveSensei;
 
 use std::io::{self, Write};
 
@@ -12,7 +12,7 @@ fn main() {
     println!("==============================");
 
     let mut game = TicTacToe::new();
-    let mut ai = MCTS::new(1000, std::f32::consts::SQRT_2);
+    let mut ai = AdaptiveSensei::new(1000, std::f32::consts::SQRT_2);
 
     while !game.is_terminal() {
         game.display_board();
@@ -29,6 +29,7 @@ fn main() {
 
             match input.trim().parse::<usize>() {
                 Ok(mv) if game.legal_moves().contains(&mv) => {
+                    ai.observe_student_move(&game, mv);
                     game.make_move(mv);
                 }
                 _ => {
@@ -36,9 +37,15 @@ fn main() {
                 }
             }
         } else {
-            println!("AI (O) is thinking...");
+            println!("Sensei (O) is thinking...");
 
-            if let Some(ai_move) = ai.best_move(&game) {
+            println!(
+                "Student stats: Avg error (μ) = {:.3}, Consistency (σ) = {:.3}",
+                ai.student.average_error(),
+                ai.student.consistency()
+            );
+
+            if let Some(ai_move) = ai.adaptive_move(&game) {
                 println!("AI chose square: {}", ai_move);
                 game.make_move(ai_move);
             }
@@ -53,6 +60,12 @@ fn main() {
     } else {
         "DRAW!"
     };
+
+    println!(
+        "Final student profile: μ = {:.3}, σ = {:.3}",
+        ai.student.average_error(),
+        ai.student.consistency()
+    );
 
     println!("Winner: {}", winner);
 }
