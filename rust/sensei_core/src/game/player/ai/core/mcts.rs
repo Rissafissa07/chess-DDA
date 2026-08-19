@@ -25,7 +25,7 @@ impl<G: Game> MCTS<G> {
         let mut sim_game = root_game.clone();
 
         // 1. selection
-        while !self.nodes[curr_idx].children.is_empty() && !sim_game.is_terminal() {
+        while !self.nodes[curr_idx].children.is_empty() && sim_game.status().is_ongoing() {
             let parent_visits = self.nodes[curr_idx].visits;
             let best_child_idx = *self.nodes[curr_idx]
                 .children
@@ -42,7 +42,7 @@ impl<G: Game> MCTS<G> {
         }
 
         // 2. expansion
-        if !sim_game.is_terminal() {
+        if sim_game.status().is_ongoing() {
             let legal_moves = sim_game.legal_moves();
 
             for mv in &legal_moves {
@@ -64,7 +64,7 @@ impl<G: Game> MCTS<G> {
         let mut rollout_game = sim_game;
         let mut rng = rand::thread_rng();
 
-        while !rollout_game.is_terminal() {
+        while rollout_game.status().is_ongoing() {
             let moves = rollout_game.legal_moves();
 
             if let Some(&random_mv) = moves.choose(&mut rng) {
@@ -76,7 +76,7 @@ impl<G: Game> MCTS<G> {
 
         // 4. backpropagation
         let root_player = root_game.current_player();
-        let outcome_reward = rollout_game.reward(root_player);
+        let outcome_reward = rollout_game.status().reward_for(root_player);
         let mut backprop_idx = Some(curr_idx);
 
         while let Some(idx) = backprop_idx {
@@ -157,6 +157,7 @@ impl<G: Game> Agent<G> for MCTS<G> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::game::player::Player;
     use crate::games::tictactoe::TicTacToe;
 
     const C: f32 = std::f32::consts::SQRT_2;
@@ -196,5 +197,33 @@ mod tests {
         let chosen_move = mcts.best_move(&game);
 
         assert_eq!(chosen_move, Some(2));
+    }
+
+    #[test]
+    fn mcts_crushes_random() {
+        use crate::game::player::ai::random::RandomAgent;
+        use crate::game::r#match::Match;
+        use crate::game::Status;
+
+        let mut mcts_wins = 0;
+        let mut draws = 0;
+
+        for _ in 0..20 {
+            let game = TicTacToe::new();
+            let p1 = MCTS::new(100, C);
+            let p2 = RandomAgent::new();
+
+            let mut m = Match::new(game, p1, p2);
+            let summary = m.play_to_completion();
+
+            match summary.status {
+                Status::Win(Player::Player1) => mcts_wins += 1,
+                Status::Draw => draws += 1,
+                _ => {}
+            }
+        }
+
+        // MCTS playing as Player1 against Random should win or draw virtually every game
+        assert!(mcts_wins + draws >= 19);
     }
 }

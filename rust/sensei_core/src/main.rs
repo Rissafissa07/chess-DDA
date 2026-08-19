@@ -1,6 +1,7 @@
-use sensei_core::game::Game;
-use sensei_core::game::player::Player;
 use sensei_core::game::player::ai::adaptive::AdaptiveSensei;
+use sensei_core::game::player::Player;
+use sensei_core::game::Game;
+use sensei_core::game::Status;
 use sensei_core::games::tictactoe::TicTacToe;
 
 use std::io::{self, Write};
@@ -13,7 +14,7 @@ fn main() {
     let mut game = TicTacToe::new();
     let mut ai = AdaptiveSensei::new(1000, std::f32::consts::SQRT_2);
 
-    while !game.is_terminal() {
+    while game.status().is_ongoing() {
         game.display_board();
 
         if game.current_player() == Player::Player1 {
@@ -52,12 +53,11 @@ fn main() {
     }
 
     game.display_board();
-    let winner = if game.reward(Player::Player1) == 1.0 {
-        "You (X)"
-    } else if game.reward(Player::Player2) == 1.0 {
-        "AI (O)"
-    } else {
-        "DRAW!"
+    let winner = match game.status() {
+        Status::Win(Player::Player1) => "You (X)",
+        Status::Win(Player::Player2) => "Sensei (O)",
+        Status::Draw => "DRAW!",
+        Status::Ongoing => "Ongoing",
     };
 
     println!(
