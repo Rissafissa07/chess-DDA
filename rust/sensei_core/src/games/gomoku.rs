@@ -2,7 +2,7 @@ use std::fmt;
 
 use crate::game::{Game, Player, Status};
 
-pub const SIZE: usize = 15;
+pub const SIZE: usize = 7;
 pub const CELLS: usize = SIZE * SIZE;
 
 const DIRECTIONS: [(isize, isize); 4] = [
@@ -228,12 +228,12 @@ mod tests {
         assert_eq!(game.parse_move("A1"), Some(0));
         assert_eq!(game.parse_move("a1"), Some(0));
 
-        // H8 -> 112
-        assert_eq!(game.parse_move("H8"), Some(112));
-        assert_eq!(game.parse_move("h8"), Some(112));
+        // Center: D4 -> row 3, col 3 -> index 3*7 + 3 = 24
+        assert_eq!(game.parse_move("D4"), Some(24));
+        assert_eq!(game.parse_move("d4"), Some(24));
 
         // Format test
-        assert_eq!(game.format_move(112), "H8");
+        assert_eq!(game.format_move(24), "D4");
         assert_eq!(game.format_move(0), "A1");
     }
 }

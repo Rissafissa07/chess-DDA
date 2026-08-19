@@ -30,14 +30,18 @@ impl<G: Game> MCTS<G> {
         let mut move_buffer = Vec::with_capacity(32);
 
         // 1. selection
+        let root_player = root_game.current_player();
+
         while !self.nodes[curr_idx].children.is_empty() && sim_game.status().is_ongoing() {
             let parent_visits = self.nodes[curr_idx].visits;
+            let is_root_turn = sim_game.current_player() == root_player;
+
             let best_child_idx = *self.nodes[curr_idx]
                 .children
                 .iter()
                 .max_by(|&&a, &&b| {
-                    let score_a = self.nodes[a].uct_score(parent_visits, self.c);
-                    let score_b = self.nodes[b].uct_score(parent_visits, self.c);
+                    let score_a = self.nodes[a].uct_score(parent_visits, self.c, is_root_turn);
+                    let score_b = self.nodes[b].uct_score(parent_visits, self.c, is_root_turn);
                     score_a.partial_cmp(&score_b).unwrap()
                 })
                 .unwrap();

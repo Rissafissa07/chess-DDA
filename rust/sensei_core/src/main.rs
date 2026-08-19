@@ -5,7 +5,7 @@ use sensei_core::games::gomoku::Gomoku;
 fn main() {
     let game = Gomoku::new();
     let human = HumanAgent::new("You");
-    let ai = AdaptiveSensei::new(1000, std::f32::consts::SQRT_2);
+    let ai = AdaptiveSensei::new(20000, std::f32::consts::SQRT_2);
 
     let mut m = Match::new(game, human, ai);
     let summary = m.play_to_completion();
