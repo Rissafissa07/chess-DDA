@@ -14,7 +14,7 @@ impl HumanAgent {
     }
 }
 
-impl<G: Game<Move = usize>> Agent<G> for HumanAgent {
+impl<G: Game> Agent<G> for HumanAgent {
     fn select_move(&mut self, game: &G) -> Option<G::Move> {
         let legal_moves = game.legal_moves();
         if legal_moves.is_empty() {
@@ -25,7 +25,7 @@ impl<G: Game<Move = usize>> Agent<G> for HumanAgent {
         println!("{}", game);
 
         loop {
-            print!("{}: enter your move {:?}: ", self.name, legal_moves);
+            print!("{}: enter your move: ", self.name);
             io::stdout().flush().unwrap();
 
             let mut input = String::new();
@@ -33,13 +33,19 @@ impl<G: Game<Move = usize>> Agent<G> for HumanAgent {
                 continue;
             }
 
-            if let Ok(mv) = input.trim().parse::<usize>() {
+            if let Some(mv) = game.parse_move(input.trim()) {
                 if legal_moves.contains(&mv) {
                     return Some(mv);
+                } else {
+                    println!(
+                        "Invalid: square {} is already occupied",
+                        game.format_move(mv)
+                    );
+                    continue;
                 }
             }
 
-            println!("Invalid move! Please select from {:?}", legal_moves);
+            println!("Invalid: not a coordinate, enter a valid square (eg H8)");
         }
     }
 

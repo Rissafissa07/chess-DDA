@@ -16,4 +16,9 @@ pub trait Game: Clone + Send + Sync + Display + PartialEq {
     fn make_move(&mut self, mv: Self::Move);
     fn current_player(&self) -> Player;
     fn status(&self) -> Status;
+
+    fn parse_move(&self, input: &str) -> Option<Self::Move>;
+    fn format_move(&self, mv: Self::Move) -> String {
+        format!("{:?}", mv)
+    }
 }

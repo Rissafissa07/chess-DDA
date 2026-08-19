@@ -86,6 +86,10 @@ impl Game for TicTacToe {
             Status::Ongoing
         }
     }
+
+    fn parse_move(&self, input: &str) -> Option<Self::Move> {
+        input.trim().parse::<usize>().ok().filter(|&idx| idx < 9)
+    }
 }
 
 impl fmt::Display for TicTacToe {
